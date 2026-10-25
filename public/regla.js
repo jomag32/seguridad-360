@@ -48,3 +48,21 @@ export function validarSemana(s) {
   });
   return err;
 }
+
+// Devolución de llave (cierre del ciclo). Color que eligió Logística al cerrar.
+export const LLAVEROS = {
+  ROJO: "La unidad NO puede salir del taller. Si está en playa, no se puede mover.",
+  AMARILLO: "Uso restringido: respetar las restricciones marcadas.",
+  VERDE: "Uso libre.",
+};
+export const RESTRICCIONES = ["No salir a ruta", "No superar 60 km/h", "Controlar agua y aceite"];
+export function validarLlave(l) {
+  const e = [];
+  if (!l?.unidad?.trim()) e.push("Falta la unidad");
+  if (!LLAVEROS[l?.color]) e.push("Elegí el color del llavero");
+  if (!l?.entrego?.trim()) e.push("Falta quién entregó");
+  if (!l?.guardia?.trim()) e.push("Elegí el guardia que recibe");
+  if (!l?.fechaHora || isNaN(Date.parse(l.fechaHora))) e.push("Falta día y hora");
+  if (l?.color === "AMARILLO" && !(l.restricciones || []).length && !l.otra?.trim()) e.push("Amarillo: marcá al menos una restricción");
+  return e;
+}

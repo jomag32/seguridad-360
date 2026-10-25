@@ -6,7 +6,7 @@ Una sola garita (S06), en la manzana de la Fábrica; playas y taller cruzando la
 - Sin foto: el piloto no guarda imágenes.
 - `npm start` → http://localhost:8360 (`PORT`, `DATA_DIR` opcionales)
 - `npm test` → reglas APTO / NO APTO y validación de la semana
-- Vistas: `#semana` (alta semanal), `#chequeo` (portón), `#registros` (+ CSV en `/api/export/chequeos.csv` y `/api/export/guardias.csv`)
+- Vistas: `#semana` (alta semanal), `#chequeo` (portón), `#llave` (devolución de llave: ROJO / AMARILLO con restricciones / VERDE), `#registros` (+ CSV en `/api/export/chequeos.csv` y `/api/export/guardias.csv`, `/api/export/llaves.csv`)
 - Capturas: `ACCESS_KEY=... node scripts/capturas.mjs` (necesita `playwright-core` y Chrome) → `capturas/`
 
 ## Regla

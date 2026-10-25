@@ -17,5 +17,10 @@ for (const n of [0, 1, 3]) await p.check(`[name=kit${n}][value=Está]`); await p
 await p.screenshot({ path: D + "3-dictamen-falta-kit-requiere-autorizacion.png", fullPage: true });
 await p.check("[name=frenos][value=NO]"); await p.click("#c-enviar"); await p.waitForSelector(".dict small:has-text('registrado')");
 await p.locator("#c-dict").scrollIntoViewIfNeeded(); await p.screenshot({ path: D + "4-dictamen-no-apto.png" });
+await p.goto(U + "#llave"); await p.reload(); await p.waitForSelector("#l-guardia option:nth-child(2)", { state: "attached" });
+await p.screenshot({ path: D + "6-devolucion-llave.png", fullPage: true });
+await p.fill("#l-f [name=unidad]", "AB123CD"); await p.click(".ll.AMARILLO"); await p.check("[name=restr][value='No salir a ruta']"); await p.check("[name=restr][value='No superar 60 km/h']");
+await p.fill("#l-f [name=entrego]", "Logística"); await p.selectOption("#l-guardia", "Guardia Dos"); await p.click("#l-f .prim");
+await p.waitForSelector("#l-res small:has-text('registrada')"); await p.locator("#l-res").scrollIntoViewIfNeeded(); await p.screenshot({ path: D + "7-devolucion-llave-amarillo-registrada.png" });
 await p.goto(U + "#registros"); await p.waitForSelector(".reg"); await p.screenshot({ path: D + "5-registros.png", fullPage: true });
 await b.close();

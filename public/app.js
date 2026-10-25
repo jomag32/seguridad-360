@@ -1,4 +1,4 @@
-import { TIPOS, KIT, ACCESOS, PUESTOS, dictaminar, validarSemana } from "./regla.js";
+import { TIPOS, KIT, ACCESOS, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave } from "./regla.js";
 const $ = (s) => document.querySelector(s), esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const opts = (l, sel) => l.map(([v, t]) => `<option value="${v}"${v === sel ? " selected" : ""}>${esc(t)}</option>`).join("");
 let clave = localStorage.getItem("s360-clave") || "";
@@ -40,7 +40,8 @@ $("#s-guardar").onclick = async () => {
 async function cargarSemana() {
   semana = (await api("/api/semana"))[1];
   const nombres = [...new Set((semana?.dias || []).flatMap((d) => d.guardias.map((g) => g.nombre)))];
-  $("#c-guardia").innerHTML = `<option value="">— Elegí guardia —</option>` + opts(nombres.map((n) => [n, n]));
+  const o = `<option value="">— Elegí guardia —</option>` + opts(nombres.map((n) => [n, n]));
+  $("#c-guardia").innerHTML = o; $("#l-guardia").innerHTML = o;
 }
 // ---------- Chequeo ----------
 $("#c-tipo").innerHTML = opts(TIPOS.map((t) => [t, t])); $("#c-acceso").innerHTML = opts(ACCESOS, "A02");
@@ -81,9 +82,31 @@ F.onsubmit = async (e) => {
   const [s, r] = await api("/api/chequeos", c);
   if (s === 201) { pintar(r.dictamen, true); $("#c-dict").scrollIntoView({ behavior: "smooth" }); } else $("#c-err").textContent = (r.errores || ["Error"]).join(" · ");
 };
+// ---------- Devolución de llave ----------
+const L = $("#l-f");
+$("#l-checks").innerHTML = RESTRICCIONES.map((r) => `<label class="chk"><input type="checkbox" name="restr" value="${r}">${r}</label>`).join("");
+const ahora = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+L.fechaHora.value = ahora();
+const leerLlave = () => ({ unidad: L.unidad.value.trim(), color: L.color.value, restricciones: [...L.querySelectorAll("[name=restr]:checked")].map((x) => x.value),
+  otra: L.otra.value.trim(), entrego: L.entrego.value.trim(), guardia: L.guardia.value, fechaHora: L.fechaHora.value, observaciones: L.observaciones.value.trim() });
+function pintarLlave(l, final) {
+  const el = $("#l-res"); if (!l.color) return (el.innerHTML = "");
+  el.className = "dict " + l.color;
+  const rs = l.color === "AMARILLO" ? [...l.restricciones, l.otra].filter(Boolean) : [];
+  el.innerHTML = `<small>${final ? "Devolución registrada" : "Llavero"}</small><big>${l.color}</big><b>${esc(LLAVEROS[l.color])}</b>${rs.length ? `<small>${rs.map(esc).join(" · ")}</small>` : ""}`;
+}
+L.onchange = L.oninput = () => { const l = leerLlave(); $("#l-restr").hidden = l.color !== "AMARILLO"; pintarLlave(l); };
+L.onsubmit = async (e) => {
+  e.preventDefault(); const l = leerLlave(), err = validarLlave({ ...l, fechaHora: l.fechaHora && l.fechaHora + ":00" });
+  $("#l-err").textContent = err.join(" · "); if (err.length) return;
+  const [s, r] = await api("/api/llaves", l);
+  if (s === 201) { pintarLlave(r, true); $("#l-res").scrollIntoView({ behavior: "smooth" }); } else $("#l-err").textContent = (r.errores || ["Error"]).join(" · ");
+};
 // ---------- Registros ----------
 async function registros() {
-  const [, ch] = await api("/api/chequeos"); await cargarSemana();
+  const [, ch] = await api("/api/chequeos"); const [, ll] = await api("/api/llaves"); await cargarSemana();
+  $("#r-llave").innerHTML = ll.length ? ll.slice(0, 20).map((l) => `<div class="reg ${l.color}"><b>${l.color}</b> · ${esc(l.unidad)} · entregó ${esc(l.entrego)} · recibió ${esc(l.guardia)}<br>
+    <small>${new Date(l.fechaHora).toLocaleString("es-AR")}${l.restricciones.length || l.otra ? " · " + [...l.restricciones, l.otra].filter(Boolean).map(esc).join(", ") : ""}</small></div>`).join("") : "<p>Sin devoluciones.</p>";
   $("#r-cheq").innerHTML = ch.length ? ch.slice(0, 20).map((c) => `<div class="reg ${c.dictamen.resultado === "APTO" ? "" : "NO"}"><b>${c.dictamen.resultado}</b> · ${esc(c.movimiento)} · ${esc(c.unidad)} (${esc(c.tipo)}) · ${esc(c.acceso)}<br>
     <small>${new Date(c.fecha).toLocaleString("es-AR")} · ${esc(c.guardia)}${c.dictamen.motivos.length ? " · " + c.dictamen.motivos.map(esc).join(", ") : ""}</small></div>`).join("") : "<p>Sin chequeos.</p>";
   $("#r-guard").innerHTML = semana ? semana.dias.map((d) => `<div class="reg"><b>${d.fecha.split("-").reverse().join("/")}</b><br>${d.guardias.map((g) => `${g.turno}: ${esc(g.nombre)} (${esc(g.empresa)}) · ${g.puesto}`).join("<br>")}</div>`).join("") : "<p>No hay semana cargada.</p>";
@@ -92,7 +115,7 @@ async function registros() {
 function ruta() {
   if (!clave) return mostrarIngreso(); document.querySelector("nav").hidden = false; $("#v-ingreso").hidden = true;
   const v = (location.hash || "#chequeo").slice(1);
-  ["semana", "chequeo", "registros"].forEach((x) => ($("#v-" + x).hidden = x !== v));
+  ["semana", "chequeo", "llave", "registros"].forEach((x) => ($("#v-" + x).hidden = x !== v));
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("act", a.hash === "#" + v));
   if (v === "registros") registros();
 }
@@ -109,6 +132,7 @@ async function descargar(u, nombre) {
 }
 $("#x-cheq").onclick = (e) => { e.preventDefault(); descargar("/api/export/chequeos.csv", "chequeos.csv"); };
 $("#x-guard").onclick = (e) => { e.preventDefault(); descargar("/api/export/guardias.csv", "guardias.csv"); };
+$("#x-llave").onclick = (e) => { e.preventDefault(); descargar("/api/export/llaves.csv", "llaves.csv"); };
 $("#s-inicio").value = lunes(); kit();
 const iniciar = () => cargarSemana().then(() => { if (semana) $("#s-inicio").value = semana.inicio; armarSemana(); ruta(); }).catch(() => {});
 if (clave) iniciar(); else mostrarIngreso();

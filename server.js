@@ -1,12 +1,12 @@
 // seguridad-360 · Tecnología ARME · piloto Visión 360 (sin Odoo). Node 20, sin dependencias.
 // Sirve public/ y guarda en un archivo JSON (DATA_DIR, por defecto ./datos).
 import http from "node:http"; import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url"; import crypto from "node:crypto";
-import { dictaminar, validarSemana, TIPOS } from "./public/regla.js";
+import { dictaminar, validarSemana, validarLlave, RESTRICCIONES, TIPOS } from "./public/regla.js";
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 const DIR = process.env.DATA_DIR || path.join(RAIZ, "datos");
 const ARCH = path.join(DIR, "registros.json");
 fs.mkdirSync(DIR, { recursive: true });
-const leer = () => { try { return JSON.parse(fs.readFileSync(ARCH, "utf8")); } catch { return { semanas: [], chequeos: [] }; } };
+const leer = () => { try { return JSON.parse(fs.readFileSync(ARCH, "utf8")); } catch { return { semanas: [], chequeos: [], llaves: [] }; } };
 const grabar = (db) => { fs.writeFileSync(ARCH + ".tmp", JSON.stringify(db)); fs.renameSync(ARCH + ".tmp", ARCH); };
 const TIPO = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml" };
 const json = (r, c, o) => { r.writeHead(c, { "content-type": "application/json" }); r.end(JSON.stringify(o)); };
@@ -42,6 +42,21 @@ export const app = async (q, r) => {
       const d = dictaminar(c); // el dictamen lo recalcula SIEMPRE el servidor
       const db = leer(); const reg = { id: Math.max(0, ...db.chequeos.map((x) => x.id)) + 1, fecha: new Date().toISOString(), ...c, dictamen: d };
       db.chequeos.push(reg); grabar(db); return json(r, 201, reg);
+    }
+    if (u.pathname === "/api/llaves" && q.method === "GET") return json(r, 200, (leer().llaves || []).slice(-50).reverse());
+    if (u.pathname === "/api/llaves" && q.method === "POST") {
+      const b = await cuerpo(q); const e = validarLlave(b); if (e.length) return json(r, 422, { errores: e });
+      const l = { unidad: b.unidad.trim(), color: b.color, restricciones: b.color === "AMARILLO" ? (b.restricciones || []).filter((x) => RESTRICCIONES.includes(x)) : [],
+        otra: b.color === "AMARILLO" ? (b.otra || "").trim() : "", entrego: b.entrego.trim(), guardia: b.guardia.trim(), fechaHora: b.fechaHora, observaciones: (b.observaciones || "").trim() };
+      const db = leer(); db.llaves ||= []; const reg = { id: Math.max(0, ...db.llaves.map((x) => x.id)) + 1, registrado: new Date().toISOString(), ...l };
+      db.llaves.push(reg); grabar(db); return json(r, 201, reg);
+    }
+    const ml = u.pathname.match(/^\/api\/llaves\/(\d+)$/);
+    if (ml && q.method === "DELETE") { const db = leer(); db.llaves ||= []; const n = db.llaves.length; db.llaves = db.llaves.filter((c) => c.id !== +ml[1]); grabar(db); return json(r, n === db.llaves.length ? 404 : 200, { ok: true }); }
+    if (u.pathname === "/api/export/llaves.csv") {
+      const f = [["id", "fecha_hora", "unidad", "color", "restricciones", "otra", "entrego", "guardia_recibe", "observaciones", "registrado"]];
+      (leer().llaves || []).forEach((l) => f.push([l.id, l.fechaHora, l.unidad, l.color, l.restricciones.join(" | "), l.otra, l.entrego, l.guardia, l.observaciones, l.registrado]));
+      r.writeHead(200, { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=llaves.csv" }); return r.end(csv(f));
     }
     let m = u.pathname.match(/^\/api\/chequeos\/(\d+)$/);
     if (m && q.method === "DELETE") { const db = leer(), n = db.chequeos.length; db.chequeos = db.chequeos.filter((c) => c.id !== +m[1]); grabar(db); return json(r, n === db.chequeos.length ? 404 : 200, { ok: true }); }

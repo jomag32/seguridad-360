@@ -1,7 +1,7 @@
 <!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tecnología ARME · Seguridad Visión 360</title><link rel="stylesheet" href="estilo.css"></head><body>
 <header><b>Tecnología ARME</b><span>Seguridad · Visión 360 · piloto garita</span></header>
-<nav><a href="#semana">Guardias</a><a href="#chequeo">Chequeo</a><a href="#registros">Registros</a></nav>
+<nav><a href="#semana">Guardias</a><a href="#chequeo">Chequeo</a><a href="#llave">Llave</a><a href="#registros">Registros</a></nav>
 <main>
 <section id="v-ingreso" hidden><h1>Ingreso</h1><p class="ayuda">Pedí la clave de acceso a Logística. Se pide una sola vez en este teléfono.</p>
  <form id="i-f"><label>Clave de acceso<input id="i-clave" autocomplete="off" autocapitalize="characters" required></label><div id="i-err" class="err"></div><button class="prim">Entrar</button></form></section>
@@ -26,7 +26,22 @@
  <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
  <div id="c-dict" class="dict"></div><div id="c-err" class="err"></div>
  <button class="prim" id="c-enviar">Registrar chequeo</button></form></section>
+<section id="v-llave" hidden><h1>Devolución de llave</h1>
+ <p class="ayuda">Cierre del ciclo. Sin chequeo visual: solo se registra la entrega de la llave con el color que eligió Logística.</p>
+ <form id="l-f">
+ <label>Unidad (patente o código)<input name="unidad" autocomplete="off" placeholder="Ej: AB123CD o INT-07"></label>
+ <fieldset class="llaveros"><legend>Color del llavero (lo eligió Logística)</legend>
+  <label class="ll ROJO"><input type="radio" name="color" value="ROJO"><big>ROJO</big><span>La unidad NO puede salir del taller. Si está en playa, no se puede mover.</span></label>
+  <label class="ll AMARILLO"><input type="radio" name="color" value="AMARILLO"><big>AMARILLO</big><span>Uso restringido: respetar las restricciones marcadas.</span></label>
+  <label class="ll VERDE"><input type="radio" name="color" value="VERDE"><big>VERDE</big><span>Uso libre.</span></label></fieldset>
+ <fieldset id="l-restr" hidden><legend>Restricciones (amarillo)</legend><div id="l-checks"></div><label>Otra<input name="otra"></label></fieldset>
+ <label>Quién entregó (nombre)<input name="entrego" autocomplete="off"></label>
+ <label>Guardia que recibe<select name="guardia" id="l-guardia"></select></label>
+ <label>Día y hora<input type="datetime-local" name="fechaHora"></label>
+ <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
+ <div id="l-res" class="dict"></div><div id="l-err" class="err"></div>
+ <button class="prim">Registrar devolución</button></form></section>
 <section id="v-registros" hidden><h1>Registros</h1>
- <p><a class="btn" id="x-cheq" href="#">CSV chequeos</a> <a class="btn" id="x-guard" href="#">CSV guardias</a></p>
- <h2>Últimos chequeos</h2><div id="r-cheq"></div><h2>Guardias de la semana</h2><div id="r-guard"></div></section>
+ <p><a class="btn" id="x-cheq" href="#">CSV chequeos</a> <a class="btn" id="x-guard" href="#">CSV guardias</a> <a class="btn" id="x-llave" href="#">CSV llaves</a></p>
+ <h2>Últimos chequeos</h2><div id="r-cheq"></div><h2>Últimas devoluciones de llave</h2><div id="r-llave"></div><h2>Guardias de la semana</h2><div id="r-guard"></div></section>
 </main><script type="module" src="app.js"></script></body></html>
