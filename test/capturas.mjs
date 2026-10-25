@@ -1,0 +1,19 @@
+import { chromium } from "playwright-core";
+const b = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
+const p = await b.newPage({ viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+const D = "/workspace/seguridad-360/capturas/", U = "http://localhost:8360/";
+await p.goto(U + "#semana"); await p.waitForSelector(".dia");
+const ej = [["Guardia Uno", "Empresa A"], ["Guardia Dos", "Empresa A"], ["Guardia Tres", "Empresa B"]];
+const gs = await p.$$(".g"); for (let i = 0; i < gs.length; i++) { const [n, e] = ej[i % 3]; await (await gs[i].$(".gn")).fill(n); await (await gs[i].$(".ge")).fill(e); }
+await p.screenshot({ path: D + "1-alta-semanal-guardias.png" });
+await p.click("#s-guardar"); await p.waitForSelector("#s-ok:has-text('guardada')");
+await p.goto(U + "#chequeo"); await p.reload(); await p.waitForSelector("#c-guardia option:nth-child(2)", { state: "attached" });
+await p.selectOption("#c-guardia", "Guardia Uno"); await p.fill("[name=unidad]", "AB123CD"); await p.fill("#c-medida", "152300");
+await p.screenshot({ path: D + "2-chequeo-porton.png", fullPage: true });
+await p.check("[name=frenos][value=OK]"); await p.check("[name=luces][value=OK]");
+for (const n of [0, 1, 3]) await p.check(`[name=kit${n}][value=Está]`); await p.check("[name=kit2][value=Falta]");
+await p.screenshot({ path: D + "3-dictamen-falta-kit-requiere-autorizacion.png", fullPage: true });
+await p.check("[name=frenos][value=NO]"); await p.click("#c-enviar"); await p.waitForSelector(".dict small:has-text('registrado')");
+await p.locator("#c-dict").scrollIntoViewIfNeeded(); await p.screenshot({ path: D + "4-dictamen-no-apto.png" });
+await p.goto(U + "#registros"); await p.waitForSelector(".reg"); await p.screenshot({ path: D + "5-registros.png", fullPage: true });
+await b.close();

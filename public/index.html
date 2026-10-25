@@ -1,0 +1,31 @@
+<!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tecnología ARME · Seguridad Visión 360</title><link rel="stylesheet" href="estilo.css"></head><body>
+<header><b>Tecnología ARME</b><span>Seguridad · Visión 360 · piloto garita</span></header>
+<nav><a href="#semana">Guardias</a><a href="#chequeo">Chequeo</a><a href="#registros">Registros</a></nav>
+<main>
+<section id="v-semana" hidden><h1>Alta semanal de guardias</h1>
+ <p class="ayuda">Guardias de terceros. Por día: 1 de Día y 2 de Noche. Una sola garita (S06), en la manzana de la Fábrica.</p>
+ <label>Semana (fecha de inicio)<input type="date" id="s-inicio" required></label>
+ <div id="s-dias"></div><div id="s-err" class="err"></div>
+ <button id="s-guardar" class="prim">Guardar semana</button><div id="s-ok" class="ok"></div></section>
+<section id="v-chequeo" hidden><h1>Chequeo visual en portón</h1>
+ <form id="f">
+ <fieldset class="seg"><legend>Movimiento</legend><label><input type="radio" name="movimiento" value="Salida a uso" checked>Salida a uso</label><label><input type="radio" name="movimiento" value="Retorno de uso">Retorno de uso</label></fieldset>
+ <label>Guardia<select name="guardia" id="c-guardia" required></select></label>
+ <label>Unidad (patente o código)<input name="unidad" required autocomplete="off" placeholder="Ej: AB123CD o INT-07"></label>
+ <label>Tipo de unidad<select name="tipo" id="c-tipo"></select></label>
+ <label>Acceso<select name="acceso" id="c-acceso"></select></label>
+ <label><span id="c-medlbl">Km</span><input name="medida" id="c-medida" type="number" inputmode="numeric" min="0" required></label>
+ <fieldset class="seg"><legend>Frenos</legend><label><input type="radio" name="frenos" value="OK">OK</label><label class="no"><input type="radio" name="frenos" value="NO">NO</label></fieldset>
+ <fieldset class="seg"><legend>Luces</legend><label><input type="radio" name="luces" value="OK">OK</label><label class="no"><input type="radio" name="luces" value="NO">NO</label></fieldset>
+ <fieldset id="c-kit"><legend>Kit</legend></fieldset>
+ <div id="c-aut" hidden class="aviso"><b>Falta kit: NO APTO para salida.</b> Solo puede salir con autorización (nombre y motivo):
+  <label>Autoriza (nombre)<input name="aut_nombre"></label><label>Motivo<input name="aut_motivo"></label></div>
+ <label>Foto (opcional)<input type="file" accept="image/*" capture="environment" id="c-foto"></label>
+ <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
+ <div id="c-dict" class="dict"></div><div id="c-err" class="err"></div>
+ <button class="prim" id="c-enviar">Registrar chequeo</button></form></section>
+<section id="v-registros" hidden><h1>Registros</h1>
+ <p><a class="btn" href="/api/export/chequeos.csv">CSV chequeos</a> <a class="btn" href="/api/export/guardias.csv">CSV guardias</a></p>
+ <h2>Últimos chequeos</h2><div id="r-cheq"></div><h2>Guardias de la semana</h2><div id="r-guard"></div></section>
+</main><script type="module" src="app.js"></script></body></html>

@@ -1,0 +1,17 @@
+*{box-sizing:border-box}body{margin:0;font:16px/1.4 system-ui,sans-serif;background:#f3f4f6;color:#111}
+header{background:#0b3d6b;color:#fff;padding:10px 14px;display:flex;flex-direction:column}header span{font-size:13px;opacity:.85}
+nav{display:flex;background:#fff;border-bottom:1px solid #ddd;position:sticky;top:0;z-index:2}nav a{flex:1;text-align:center;padding:12px 4px;color:#0b3d6b;text-decoration:none;font-weight:600}nav a.act{border-bottom:3px solid #0b3d6b}
+main{padding:12px;max-width:640px;margin:auto}h1{font-size:20px;margin:6px 0 10px}h2{font-size:16px}.ayuda{font-size:14px;color:#555}
+label{display:block;margin:8px 0;font-weight:600;font-size:14px}input,select,textarea{display:block;width:100%;font:inherit;padding:10px;margin-top:4px;border:1px solid #bbb;border-radius:8px;background:#fff}
+fieldset{border:1px solid #ccc;border-radius:8px;margin:10px 0;padding:6px 10px;background:#fff}legend{font-weight:700;font-size:14px}
+.seg{display:flex;flex-wrap:wrap;gap:8px}.seg legend{width:100%}.seg label{flex:1;margin:4px 0;border:1px solid #bbb;border-radius:8px;padding:10px;text-align:center;font-weight:600}
+.seg input{display:inline;width:auto;margin:0 6px 0 0}.seg label:has(input:checked){background:#0b3d6b;color:#fff}.seg label.no:has(input:checked){background:#b91c1c}
+.kitfila{display:flex;align-items:center;gap:6px;border:0;padding:4px 0;margin:0}.kitfila legend{float:left;width:40%;padding:0;font-weight:600}.kitfila label{padding:8px}
+.dia{background:#fff;border:1px solid #ccc;border-radius:8px;padding:8px;margin:10px 0}.dia h3{margin:0 0 4px;font-size:15px}.g{border-top:1px dashed #ccc;padding-top:4px}.g b{font-size:13px;color:#0b3d6b}
+.fila2{display:grid;grid-template-columns:1fr 1fr;gap:6px}.fila2 label{margin:4px 0}
+.prim{width:100%;padding:14px;font:700 17px system-ui;background:#0b3d6b;color:#fff;border:0;border-radius:10px;margin:12px 0}
+.btn{display:inline-block;padding:10px 12px;background:#0b3d6b;color:#fff;border-radius:8px;text-decoration:none;font-size:14px}
+.err{color:#b91c1c;font-size:14px}.ok{color:#15803d;font-weight:700}.aviso{background:#fff7ed;border:1px solid #f59e0b;border-radius:8px;padding:8px;font-size:14px}
+.dict{border-radius:12px;padding:16px;text-align:center;margin-top:12px}.dict:empty{display:none}.dict big{display:block;font-size:44px;font-weight:900;letter-spacing:1px}
+.dict.APTO{background:#dcfce7;color:#14532d;border:3px solid #16a34a}.dict.NO{background:#fee2e2;color:#7f1d1d;border:3px solid #dc2626}.dict small{display:block}
+.reg{background:#fff;border-left:5px solid #16a34a;border-radius:6px;padding:8px;margin:6px 0;font-size:14px}.reg.NO{border-color:#dc2626}

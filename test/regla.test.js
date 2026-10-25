@@ -1,0 +1,21 @@
+import test from "node:test"; import assert from "node:assert/strict";
+import { dictaminar, validarSemana } from "../public/regla.js";
+const kitOk = { Matafuego: "Está", Balizas: "Está", Gato: "Está", "Llave de rueda": "Está" };
+const base = { movimiento: "Salida a uso", tipo: "Liviano", frenos: "OK", luces: "OK", kit: kitOk };
+test("todo OK → APTO", () => assert.equal(dictaminar(base).resultado, "APTO"));
+test("frenos NO → NO APTO bloqueante 'La unidad no sale'", () => { const d = dictaminar({ ...base, frenos: "NO" }); assert.equal(d.resultado, "NO APTO"); assert.ok(d.bloqueante); assert.equal(d.texto, "La unidad no sale"); });
+test("luces NO no se overridea con autorización", () => { const d = dictaminar({ ...base, luces: "NO", autorizacion: { nombre: "X", motivo: "Y" } }); assert.equal(d.resultado, "NO APTO"); assert.ok(d.bloqueante); });
+test("falta kit en salida sin autorización → NO APTO", () => assert.equal(dictaminar({ ...base, kit: { ...kitOk, Gato: "Falta" } }).resultado, "NO APTO"));
+test("falta kit con autorización incompleta → NO APTO", () => assert.equal(dictaminar({ ...base, kit: { ...kitOk, Gato: "Falta" }, autorizacion: { nombre: "X", motivo: " " } }).resultado, "NO APTO"));
+test("falta kit con autorización nombre+motivo → APTO autorizado", () => { const d = dictaminar({ ...base, kit: { ...kitOk, Gato: "Falta" }, autorizacion: { nombre: "Jefe", motivo: "Urgencia" } }); assert.equal(d.resultado, "APTO"); assert.ok(d.autorizado); });
+test("ítem sin marcar cuenta como faltante", () => assert.equal(dictaminar({ ...base, kit: {} }).resultado, "NO APTO"));
+test("retorno con faltante → NO APTO (aviso)", () => assert.equal(dictaminar({ ...base, movimiento: "Retorno de uso", kit: { ...kitOk, Gato: "Falta" } }).resultado, "NO APTO"));
+test("semirremolque sin kit → APTO", () => assert.equal(dictaminar({ ...base, tipo: "Semirremolque", kit: {} }).resultado, "APTO"));
+test("máquina solo pide matafuego", () => assert.equal(dictaminar({ ...base, tipo: "Máquina", kit: { Matafuego: "Está" } }).resultado, "APTO"));
+test("pesado pide cuñas", () => assert.equal(dictaminar({ ...base, tipo: "Pesado", kit: { Matafuego: "Está", Balizas: "Está", "Llave de rueda": "Está" } }).resultado, "NO APTO"));
+test("semana: 1 de día y 2 de noche", () => {
+  const g = (t) => ({ turno: t, nombre: "N", empresa: "E", puesto: "S06" });
+  const dias = Array.from({ length: 7 }, (_, i) => ({ fecha: "d" + i, guardias: [g("Día"), g("Noche"), g("Noche")] }));
+  assert.deepEqual(validarSemana({ inicio: "2026-10-26", dias }), []);
+  dias[0].guardias.pop(); assert.ok(validarSemana({ inicio: "2026-10-26", dias }).length);
+});
