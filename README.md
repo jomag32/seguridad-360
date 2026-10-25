@@ -2,10 +2,12 @@
 Web mobile-first, sin frameworks ni dependencias (Node 20). Un solo servicio sirve `public/` y guarda en `DATA_DIR/registros.json`. **Sin conexión a Odoo.**
 Una sola garita (S06), en la manzana de la Fábrica; playas y taller cruzando la calle (accesos A01–A12 según el croquis).
 
+- Clave: `ACCESS_KEY` (env). La pantalla de ingreso la pide una vez y la guarda en el teléfono; la API y los CSV la exigen (header `x-access-key`).
+- Sin foto: el piloto no guarda imágenes.
 - `npm start` → http://localhost:8360 (`PORT`, `DATA_DIR` opcionales)
 - `npm test` → reglas APTO / NO APTO y validación de la semana
 - Vistas: `#semana` (alta semanal), `#chequeo` (portón), `#registros` (+ CSV en `/api/export/chequeos.csv` y `/api/export/guardias.csv`)
-- Capturas: `node test/capturas.mjs` (necesita `playwright-core` y Chrome) → `capturas/`
+- Capturas: `ACCESS_KEY=... node scripts/capturas.mjs` (necesita `playwright-core` y Chrome) → `capturas/`
 
 ## Regla
 - Frenos o luces = NO → **NO APTO · "La unidad no sale"**. Bloqueante, sin override.

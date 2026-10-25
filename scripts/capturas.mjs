@@ -1,7 +1,9 @@
 import { chromium } from "playwright-core";
 const b = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
 const p = await b.newPage({ viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
-const D = "/workspace/seguridad-360/capturas/", U = "http://localhost:8360/";
+const K = process.env.ACCESS_KEY; const D = "/workspace/seguridad-360/capturas/", U = "http://localhost:8360/";
+await p.goto(U); await p.fill("#i-clave", "CLAVE-MAL"); await p.click("#i-f button"); await p.waitForSelector("#i-err:has-text('incorrecta')");
+await p.fill("#i-clave", ""); await p.screenshot({ path: D + "0-ingreso.png" }); await p.fill("#i-clave", K); await p.click("#i-f button");
 await p.goto(U + "#semana"); await p.waitForSelector(".dia");
 const ej = [["Guardia Uno", "Empresa A"], ["Guardia Dos", "Empresa A"], ["Guardia Tres", "Empresa B"]];
 const gs = await p.$$(".g"); for (let i = 0; i < gs.length; i++) { const [n, e] = ej[i % 3]; await (await gs[i].$(".gn")).fill(n); await (await gs[i].$(".ge")).fill(e); }

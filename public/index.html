@@ -3,6 +3,8 @@
 <header><b>Tecnología ARME</b><span>Seguridad · Visión 360 · piloto garita</span></header>
 <nav><a href="#semana">Guardias</a><a href="#chequeo">Chequeo</a><a href="#registros">Registros</a></nav>
 <main>
+<section id="v-ingreso" hidden><h1>Ingreso</h1><p class="ayuda">Pedí la clave de acceso a Logística. Se pide una sola vez en este teléfono.</p>
+ <form id="i-f"><label>Clave de acceso<input id="i-clave" autocomplete="off" autocapitalize="characters" required></label><div id="i-err" class="err"></div><button class="prim">Entrar</button></form></section>
 <section id="v-semana" hidden><h1>Alta semanal de guardias</h1>
  <p class="ayuda">Guardias de terceros. Por día: 1 de Día y 2 de Noche. Una sola garita (S06), en la manzana de la Fábrica.</p>
  <label>Semana (fecha de inicio)<input type="date" id="s-inicio" required></label>
@@ -21,11 +23,10 @@
  <fieldset id="c-kit"><legend>Kit</legend></fieldset>
  <div id="c-aut" hidden class="aviso"><b>Falta kit: NO APTO para salida.</b> Solo puede salir con autorización (nombre y motivo):
   <label>Autoriza (nombre)<input name="aut_nombre"></label><label>Motivo<input name="aut_motivo"></label></div>
- <label>Foto (opcional)<input type="file" accept="image/*" capture="environment" id="c-foto"></label>
  <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
  <div id="c-dict" class="dict"></div><div id="c-err" class="err"></div>
  <button class="prim" id="c-enviar">Registrar chequeo</button></form></section>
 <section id="v-registros" hidden><h1>Registros</h1>
- <p><a class="btn" href="/api/export/chequeos.csv">CSV chequeos</a> <a class="btn" href="/api/export/guardias.csv">CSV guardias</a></p>
+ <p><a class="btn" id="x-cheq" href="#">CSV chequeos</a> <a class="btn" id="x-guard" href="#">CSV guardias</a></p>
  <h2>Últimos chequeos</h2><div id="r-cheq"></div><h2>Guardias de la semana</h2><div id="r-guard"></div></section>
 </main><script type="module" src="app.js"></script></body></html>

@@ -1,4 +1,4 @@
-# Listo para desplegar; NO desplegado. Plan free: el disco es efímero (datos/registros.json se pierde en cada redeploy/reinicio).
+# Plan free: el disco es efímero (datos/registros.json se pierde en cada redeploy/reinicio).
 services:
   - type: web
     name: arme-seguridad-360
@@ -6,12 +6,15 @@ services:
     plan: free
     region: oregon
     buildCommand: "true"
-    startCommand: node server.js
+    startCommand: npm start
     healthCheckPath: /healthz
+    autoDeploy: true
     envVars:
+      - key: ACCESS_KEY
+        sync: false
       - key: NODE_VERSION
         value: "20"
       - key: DATA_DIR
-        value: /tmp/seguridad-360
+        value: /tmp/data
     # Con plan starter (pago) se puede persistir con disco:
     # disk: { name: datos, mountPath: /var/data, sizeGB: 1 }  y DATA_DIR=/var/data

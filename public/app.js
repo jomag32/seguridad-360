@@ -1,7 +1,13 @@
 import { TIPOS, KIT, ACCESOS, PUESTOS, dictaminar, validarSemana } from "./regla.js";
 const $ = (s) => document.querySelector(s), esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const opts = (l, sel) => l.map(([v, t]) => `<option value="${v}"${v === sel ? " selected" : ""}>${esc(t)}</option>`).join("");
-const api = async (u, o) => { const r = await fetch(u, o && { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(o) }); return [r.status, await r.json()]; };
+let clave = localStorage.getItem("s360-clave") || "";
+const api = async (u, o) => {
+  const r = await fetch(u, { method: o ? "POST" : "GET", headers: { "content-type": "application/json", "x-access-key": clave }, body: o ? JSON.stringify(o) : undefined });
+  if (r.status === 401) { localStorage.removeItem("s360-clave"); clave = ""; mostrarIngreso(); throw new Error("sin clave"); }
+  return [r.status, await r.json()];
+};
+function mostrarIngreso() { document.querySelectorAll("body section").forEach((x) => (x.hidden = x.id !== "v-ingreso")); document.querySelector("nav").hidden = true; }
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 let semana = null;
 // ---------- Semana ----------
@@ -38,7 +44,7 @@ async function cargarSemana() {
 }
 // ---------- Chequeo ----------
 $("#c-tipo").innerHTML = opts(TIPOS.map((t) => [t, t])); $("#c-acceso").innerHTML = opts(ACCESOS, "A02");
-const F = $("#f"); let foto = null;
+const F = $("#f");
 function kit() {
   const t = F.tipo.value, items = KIT[t];
   $("#c-kit").innerHTML = `<legend>Kit · ${t}</legend>` + (items.length ? items.map((i, n) => `<fieldset class="seg kitfila"><legend>${i}</legend>
@@ -52,7 +58,7 @@ function datos() {
   const t = F.tipo.value, k = {}; KIT[t].forEach((i, n) => (k[i] = F["kit" + n].value || ""));
   return { movimiento: F.movimiento.value, guardia: F.guardia.value, unidad: F.unidad.value.trim(), tipo: t, acceso: F.acceso.value,
     medida: Number(F.medida.value), frenos: F.frenos.value, luces: F.luces.value, kit: k,
-    autorizacion: { nombre: F.aut_nombre.value.trim(), motivo: F.aut_motivo.value.trim() }, observaciones: F.observaciones.value.trim(), foto };
+    autorizacion: { nombre: F.aut_nombre.value.trim(), motivo: F.aut_motivo.value.trim() }, observaciones: F.observaciones.value.trim() };
 }
 function pintar(d, final) {
   const el = $("#c-dict"); el.className = "dict " + (d.resultado === "APTO" ? "APTO" : "NO");
@@ -66,9 +72,6 @@ function actualizar() {
   if (bloq || listo) pintar(dictaminar(c)); else $("#c-dict").innerHTML = "";
 }
 F.tipo.onchange = () => { kit(); actualizar(); }; F.oninput = actualizar; F.onchange = actualizar;
-$("#c-foto").onchange = (e) => { const f = e.target.files[0]; if (!f) return (foto = null);
-  const img = new Image(); img.onload = () => { const c = document.createElement("canvas"), s = Math.min(1, 800 / Math.max(img.width, img.height));
-    c.width = img.width * s; c.height = img.height * s; c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); foto = c.toDataURL("image/jpeg", 0.6); }; img.src = URL.createObjectURL(f); };
 F.onsubmit = async (e) => {
   e.preventDefault(); const c = datos(), err = [];
   if (!c.guardia) err.push("Elegí el guardia (cargalo en la semana)"); if (!c.unidad) err.push("Falta la unidad");
@@ -87,11 +90,25 @@ async function registros() {
 }
 // ---------- Rutas ----------
 function ruta() {
+  if (!clave) return mostrarIngreso(); document.querySelector("nav").hidden = false; $("#v-ingreso").hidden = true;
   const v = (location.hash || "#chequeo").slice(1);
   ["semana", "chequeo", "registros"].forEach((x) => ($("#v-" + x).hidden = x !== v));
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("act", a.hash === "#" + v));
   if (v === "registros") registros();
 }
 addEventListener("hashchange", ruta);
+$("#i-f").onsubmit = async (e) => {
+  e.preventDefault(); const k = $("#i-clave").value.trim().toUpperCase();
+  const r = await fetch("/api/semana", { headers: { "x-access-key": k } });
+  if (r.status === 401) return ($("#i-err").textContent = "Clave incorrecta");
+  clave = k; localStorage.setItem("s360-clave", k); iniciar();
+};
+async function descargar(u, nombre) {
+  const r = await fetch(u, { headers: { "x-access-key": clave } }); if (!r.ok) return;
+  const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = nombre; a.click();
+}
+$("#x-cheq").onclick = (e) => { e.preventDefault(); descargar("/api/export/chequeos.csv", "chequeos.csv"); };
+$("#x-guard").onclick = (e) => { e.preventDefault(); descargar("/api/export/guardias.csv", "guardias.csv"); };
 $("#s-inicio").value = lunes(); kit();
-cargarSemana().then(() => { if (semana) $("#s-inicio").value = semana.inicio; armarSemana(); ruta(); });
+const iniciar = () => cargarSemana().then(() => { if (semana) $("#s-inicio").value = semana.inicio; armarSemana(); ruta(); }).catch(() => {});
+if (clave) iniciar(); else mostrarIngreso();
