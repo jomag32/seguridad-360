@@ -1,35 +1,39 @@
 <!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tecnología ARME · Seguridad Visión 360</title><link rel="stylesheet" href="estilo.css"></head><body>
-<header><b>Tecnología ARME</b><span>Seguridad · Visión 360 · piloto garita</span></header>
+<title>Seguridad 360</title><meta name="application-name" content="Seguridad 360"><meta name="apple-mobile-web-app-title" content="Seguridad 360"><link rel="stylesheet" href="estilo.css"></head><body>
+<header><b>Seguridad 360</b><span>Garita S06 · Tecnología ARME</span></header>
 <nav><a href="#semana">Guardias</a><a href="#chequeo">Chequeo</a><a href="#llave">Llave</a><a href="#registros">Registros</a></nav>
 <main>
-<section id="v-ingreso" hidden><h1>Ingreso</h1><p class="ayuda">Pedí la clave de acceso a Logística. Se pide una sola vez en este teléfono.</p>
+<section id="v-ingreso" hidden><h1>Seguridad 360 · Ingreso</h1><p class="ayuda">Pedí la clave de acceso a Logística. Se pide una sola vez en este teléfono.</p>
  <form id="i-f"><label>Clave de acceso<input id="i-clave" autocomplete="off" autocapitalize="characters" required></label><div id="i-err" class="err"></div><button class="prim">Entrar</button></form></section>
 <section id="v-semana" hidden><h1>Alta semanal de guardias</h1>
- <p class="ayuda">Guardias de terceros. Por día: 1 de Día y 2 de Noche. Una sola garita (S06), en la manzana de la Fábrica.</p>
+ <p class="ayuda">Guardias de terceros, cargados en Odoo (Seguridad 360 › Guardias). Por día: 1 de Día y 2 de Noche. Garita S06.</p>
  <label>Semana (fecha de inicio)<input type="date" id="s-inicio" required></label>
  <div id="s-dias"></div><div id="s-err" class="err"></div>
  <button id="s-guardar" class="prim">Guardar semana</button><div id="s-ok" class="ok"></div></section>
 <section id="v-chequeo" hidden><h1>Chequeo visual en portón</h1>
- <form id="f">
+ <form id="f" novalidate>
  <fieldset class="seg"><legend>Movimiento</legend><label><input type="radio" name="movimiento" value="Salida a uso" checked>Salida a uso</label><label><input type="radio" name="movimiento" value="Retorno de uso">Retorno de uso</label></fieldset>
- <label>Guardia<select name="guardia" id="c-guardia" required></select></label>
- <label>Unidad (patente o código)<input name="unidad" required autocomplete="off" placeholder="Ej: AB123CD o INT-07"></label>
+ <label>Guardia<select name="guardia" id="c-guardia"></select></label>
+ <label>Unidad<select name="vehiculo" id="c-vehiculo"></select></label>
+ <label id="c-otra" hidden>Unidad (si no está en la lista)<input name="unidad" autocomplete="off" placeholder="Ej: AB123CD o INT-07"></label>
  <label>Tipo de unidad<select name="tipo" id="c-tipo"></select></label>
- <label>Acceso<select name="acceso" id="c-acceso"></select></label>
- <label><span id="c-medlbl">Km</span><input name="medida" id="c-medida" type="number" inputmode="numeric" min="0" required></label>
+ <label>Portón<select name="porton" id="c-porton"></select></label>
+ <label><span id="c-medlbl">Km</span><input name="medida" id="c-medida" type="number" inputmode="numeric" min="0"></label>
  <fieldset class="seg"><legend>Frenos</legend><label><input type="radio" name="frenos" value="OK">OK</label><label class="no"><input type="radio" name="frenos" value="NO">NO</label></fieldset>
  <fieldset class="seg"><legend>Luces</legend><label><input type="radio" name="luces" value="OK">OK</label><label class="no"><input type="radio" name="luces" value="NO">NO</label></fieldset>
+ <fieldset class="seg" id="c-vtvf"><legend>VTV / RTO vigente</legend><label><input type="radio" name="vtv" value="Sí">Sí</label><label class="no"><input type="radio" name="vtv" value="No">No</label></fieldset>
+ <fieldset class="seg"><legend>Documentación (cédula, seguro, VTV)</legend><label><input type="radio" name="documentacion" value="Sí">Completa</label><label class="no"><input type="radio" name="documentacion" value="No">Falta</label></fieldset>
  <fieldset id="c-kit"><legend>Kit</legend></fieldset>
- <div id="c-aut" hidden class="aviso"><b>Falta kit: NO APTO para salida.</b> Solo puede salir con autorización (nombre y motivo):
-  <label>Autoriza (nombre)<input name="aut_nombre"></label><label>Motivo<input name="aut_motivo"></label></div>
+ <div id="c-aut" hidden class="aviso"><b>Falta kit: NO APTO, la unidad no sale.</b> Solo puede salir si el Jefe de Logística autoriza la salida en Odoo. Frenos, luces, VTV/RTO o documentación: nunca se autoriza.</div>
  <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
+ <fieldset class="firma"><legend>Firma del guardia</legend><div class="fila2"><label>Legajo<input name="legajo" autocomplete="off" autocapitalize="characters"></label><label>DNI<input name="dni" inputmode="numeric" autocomplete="off"></label></div></fieldset>
  <div id="c-dict" class="dict"></div><div id="c-err" class="err"></div>
  <button class="prim" id="c-enviar">Registrar chequeo</button></form></section>
 <section id="v-llave" hidden><h1>Devolución de llave</h1>
- <p class="ayuda">Cierre del ciclo. Sin chequeo visual: solo se registra la entrega de la llave con el color que eligió Logística.</p>
- <form id="l-f">
- <label>Unidad (patente o código)<input name="unidad" autocomplete="off" placeholder="Ej: AB123CD o INT-07"></label>
+ <p class="ayuda">Cierre del ciclo. Llavero ROJO: la unidad queda bloqueada para salir hasta una devolución VERDE o AMARILLO. Sin chequeo visual: solo se registra la entrega de la llave con el color que eligió Logística.</p>
+ <form id="l-f" novalidate>
+ <label>Unidad<select name="vehiculo" id="l-vehiculo"></select></label>
+ <label id="l-otra" hidden>Unidad (si no está en la lista)<input name="unidad" autocomplete="off" placeholder="Ej: AB123CD o INT-07"></label>
  <fieldset class="llaveros"><legend>Color del llavero (lo eligió Logística)</legend>
   <label class="ll ROJO"><input type="radio" name="color" value="ROJO"><big>ROJO</big><span>La unidad NO puede salir del taller. Si está en playa, no se puede mover.</span></label>
   <label class="ll AMARILLO"><input type="radio" name="color" value="AMARILLO"><big>AMARILLO</big><span>Uso restringido: respetar las restricciones marcadas.</span></label>
@@ -39,9 +43,10 @@
  <label>Guardia que recibe<select name="guardia" id="l-guardia"></select></label>
  <label>Día y hora<input type="datetime-local" name="fechaHora"></label>
  <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
+ <fieldset class="firma"><legend>Firma del guardia</legend><div class="fila2"><label>Legajo<input name="legajo" autocomplete="off" autocapitalize="characters"></label><label>DNI<input name="dni" inputmode="numeric" autocomplete="off"></label></div></fieldset>
  <div id="l-res" class="dict"></div><div id="l-err" class="err"></div>
  <button class="prim">Registrar devolución</button></form></section>
 <section id="v-registros" hidden><h1>Registros</h1>
  <p><a class="btn" id="x-cheq" href="#">CSV chequeos</a> <a class="btn" id="x-guard" href="#">CSV guardias</a> <a class="btn" id="x-llave" href="#">CSV llaves</a></p>
- <h2>Últimos chequeos</h2><div id="r-cheq"></div><h2>Últimas devoluciones de llave</h2><div id="r-llave"></div><h2>Guardias de la semana</h2><div id="r-guard"></div></section>
+ <p class="ayuda">Los registros quedan en Odoo (Seguridad 360).</p><h2>Últimos chequeos</h2><div id="r-cheq"></div><h2>Últimas devoluciones de llave</h2><div id="r-llave"></div><h2>Guardias de la semana</h2><div id="r-guard"></div></section>
 </main><script type="module" src="app.js"></script></body></html>

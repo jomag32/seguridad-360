@@ -1,3 +1,3 @@
-{ "name": "seguridad-360", "version": "0.1.0", "private": true, "type": "module",
-  "description": "Tecnología ARME · Seguridad Visión 360 · piloto de garita (sin Odoo, sin dependencias)",
+{ "name": "seguridad-360", "version": "0.2.0", "private": true, "type": "module",
+  "description": "Seguridad 360 · app de garita sobre Odoo (sin dependencias)",
   "engines": { "node": ">=20" }, "scripts": { "start": "node server.js", "test": "node --test test/" } }

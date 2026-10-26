@@ -1,12 +1,24 @@
-import { TIPOS, KIT, ACCESOS, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave } from "./regla.js";
+import { TIPOS, KIT, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave, validarChequeo } from "./regla.js";
 const $ = (s) => document.querySelector(s), esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const opts = (l, sel) => l.map(([v, t]) => `<option value="${v}"${v === sel ? " selected" : ""}>${esc(t)}</option>`).join("");
 let clave = localStorage.getItem("s360-clave") || "";
 const api = async (u, o) => {
   const r = await fetch(u, { method: o ? "POST" : "GET", headers: { "content-type": "application/json", "x-access-key": clave }, body: o ? JSON.stringify(o) : undefined });
   if (r.status === 401) { localStorage.removeItem("s360-clave"); clave = ""; mostrarIngreso(); throw new Error("sin clave"); }
-  return [r.status, await r.json()];
+  const j = await r.json().catch(() => ({ errores: ["Respuesta inválida del servidor"] }));
+  return [r.status, j];
 };
+const errores = (r) => (r?.errores || [r?.error || "No se pudo registrar. Probá de nuevo."]).join(" · ");
+let cat = { guardias: [], portones: [], unidades: [] };
+const OTRA = "__otra";
+async function cargarCatalogos() {
+  const [s, c] = await api("/api/catalogos"); if (s !== 200) return; cat = c;
+  const g = `<option value="">— Elegí guardia —</option>` + opts(cat.guardias.map((x) => [String(x.id), `${x.nombre} · ${x.empresa}`]));
+  $("#c-guardia").innerHTML = g; $("#l-guardia").innerHTML = g;
+  const u = `<option value="">— Elegí la unidad —</option>` + opts(cat.unidades.map((x) => [String(x.id), x.nombre])) + `<option value="${OTRA}">Otra (escribir)</option>`;
+  $("#c-vehiculo").innerHTML = u; $("#l-vehiculo").innerHTML = u;
+  $("#c-porton").innerHTML = `<option value="">— Elegí el portón —</option>` + opts(cat.portones.map((x) => [String(x.id), x.nombre]));
+}
 function mostrarIngreso() { document.querySelectorAll("body section").forEach((x) => (x.hidden = x.id !== "v-ingreso")); document.querySelector("nav").hidden = true; }
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 let semana = null;
@@ -20,8 +32,8 @@ function armarSemana() {
     h += `<div class="dia" data-fecha="${f}"><h3>${DIAS[(dd.getDay() + 6) % 7]} ${f.split("-").reverse().join("/")}</h3>`;
     ["Día", "Noche", "Noche"].forEach((t, k) => {
       const prev = semana?.inicio === ini ? semana.dias[i]?.guardias.filter((g) => g.turno === t)[t === "Noche" ? k - 1 : 0] : null;
-      h += `<div class="g" data-turno="${t}"><b>Turno ${t}${t === "Noche" ? " · guardia " + k : ""}</b><label>Nombre y apellido<input class="gn" value="${esc(prev?.nombre)}"></label>
-      <div class="fila2"><label>Empresa<input class="ge" value="${esc(prev?.empresa)}"></label><label>Puesto<select class="gp">${opts(PUESTOS, prev?.puesto || "S06")}</select></label></div></div>`;
+      h += `<div class="g" data-turno="${t}"><b>Turno ${t}${t === "Noche" ? " · guardia " + k : ""}</b><div class="fila2"><label>Guardia<select class="gg"><option value="">— Elegí guardia —</option>${opts(cat.guardias.map((x) => [String(x.id), `${x.nombre} · ${x.empresa}`]), String(prev?.guardiaId || ""))}</select></label>
+      <label>Puesto<select class="gp">${opts(PUESTOS, prev?.puesto || "S06")}</select></label></div></div>`;
     });
     h += "</div>";
   }
@@ -29,22 +41,19 @@ function armarSemana() {
 }
 function leerSemana() {
   return { inicio: $("#s-inicio").value, dias: [...document.querySelectorAll(".dia")].map((d) => ({ fecha: d.dataset.fecha,
-    guardias: [...d.querySelectorAll(".g")].map((g) => ({ turno: g.dataset.turno, nombre: g.querySelector(".gn").value.trim(), empresa: g.querySelector(".ge").value.trim(), puesto: g.querySelector(".gp").value })) })) };
+    guardias: [...d.querySelectorAll(".g")].map((g) => ({ turno: g.dataset.turno, guardiaId: +g.querySelector(".gg").value || null, puesto: g.querySelector(".gp").value })) })) };
 }
 $("#s-inicio").onchange = armarSemana;
 $("#s-guardar").onclick = async () => {
   const s = leerSemana(), e = validarSemana(s); $("#s-ok").textContent = "";
   $("#s-err").innerHTML = e.slice(0, 6).map(esc).join("<br>") + (e.length > 6 ? `<br>… y ${e.length - 6} más` : ""); if (e.length) return;
-  const [c, r] = await api("/api/semana", s); if (c === 201) { $("#s-ok").textContent = "Semana guardada ✔"; await cargarSemana(); } else $("#s-err").textContent = (r.errores || ["Error"]).join(" · ");
+  const [c, r] = await api("/api/semana", s); if (c === 201) { $("#s-ok").textContent = "Semana guardada ✔"; await cargarSemana(); } else $("#s-err").textContent = errores(r);
 };
 async function cargarSemana() {
   semana = (await api("/api/semana"))[1];
-  const nombres = [...new Set((semana?.dias || []).flatMap((d) => d.guardias.map((g) => g.nombre)))];
-  const o = `<option value="">— Elegí guardia —</option>` + opts(nombres.map((n) => [n, n]));
-  $("#c-guardia").innerHTML = o; $("#l-guardia").innerHTML = o;
 }
 // ---------- Chequeo ----------
-$("#c-tipo").innerHTML = opts(TIPOS.map((t) => [t, t])); $("#c-acceso").innerHTML = opts(ACCESOS, "A02");
+$("#c-tipo").innerHTML = opts(TIPOS.map((t) => [t, t]));
 const F = $("#f");
 function kit() {
   const t = F.tipo.value, items = KIT[t];
@@ -53,62 +62,72 @@ function kit() {
     : `<p class="ayuda">Semirremolque: viaja con el kit del tractor.</p>`);
   const semi = t === "Semirremolque", maq = t === "Máquina";
   $("#c-medlbl").textContent = semi ? "Km (semirremolque = 0)" : maq ? "Horas" : "Km";
-  $("#c-medida").readOnly = semi; if (semi) $("#c-medida").value = 0;
+  $("#c-medida").readOnly = semi; if (semi) $("#c-medida").value = 0; $("#c-vtvf").hidden = maq;
 }
 function datos() {
   const t = F.tipo.value, k = {}; KIT[t].forEach((i, n) => (k[i] = F["kit" + n].value || ""));
-  return { movimiento: F.movimiento.value, guardia: F.guardia.value, unidad: F.unidad.value.trim(), tipo: t, acceso: F.acceso.value,
-    medida: Number(F.medida.value), frenos: F.frenos.value, luces: F.luces.value, kit: k,
-    autorizacion: { nombre: F.aut_nombre.value.trim(), motivo: F.aut_motivo.value.trim() }, observaciones: F.observaciones.value.trim() };
+  const v = F.vehiculo.value;
+  return { movimiento: F.movimiento.value, guardiaId: +F.guardia.value || null, vehiculoId: v && v !== OTRA ? +v : null, unidad: v === OTRA ? F.unidad.value.trim() : "",
+    tipo: t, portonId: +F.porton.value || null, medida: F.medida.value === "" ? "" : Number(F.medida.value), frenos: F.frenos.value, luces: F.luces.value,
+    vtv: t === "Máquina" ? "" : F.vtv.value, documentacion: F.documentacion.value, kit: k, legajo: F.legajo.value.trim(), dni: F.dni.value.trim(), observaciones: F.observaciones.value.trim() };
 }
-function pintar(d, final) {
-  const el = $("#c-dict"); el.className = "dict " + (d.resultado === "APTO" ? "APTO" : "NO");
-  el.innerHTML = `<small>${final ? "Dictamen registrado" : "Dictamen"}</small><big>${d.resultado}</big><b>${esc(d.texto)}</b>` +
-    (d.motivos.length ? `<small>${d.motivos.map(esc).join(" · ")}</small>` : "") + (d.bloqueante ? `<small>Bloqueante: no se puede autorizar.</small>` : "");
+let espera = null;
+function pintar(d, reg) {
+  const el = $("#c-dict"), aut = reg?.estado === "salida_autorizada";
+  el.className = "dict " + (d.resultado === "APTO" || aut ? "APTO" : "NO");
+  let estado = "";
+  if (reg) estado = aut ? `<b>Salida autorizada por ${esc(reg.autorizacion.por)} – ${esc(reg.autorizacion.motivo)}</b>`
+    : reg.estado === "bloqueada" ? `<b>BLOQUEADA: la unidad no sale.</b>${!d.bloqueante && reg.movimiento === "Salida a uso" ? "<small>Esperando autorización del Jefe de Logística en Odoo… (se actualiza sola)</small>" : ""}`
+    : reg.estado === "liberada" ? "<b>Liberada por un Responsable.</b>" : "";
+  el.innerHTML = `<small>${reg ? "Dictamen registrado · " + esc(reg.numero) : "Dictamen"}</small><big>${aut ? "SALIDA AUTORIZADA" : d.resultado}</big>${reg ? "" : `<b>${esc(d.texto)}</b>`}${estado}` +
+    (d.motivos.length ? `<small>${d.motivos.map(esc).join(" · ")}</small>` : "") + (d.bloqueante ? `<small>Falla bloqueante: no se puede autorizar (ni el Jefe de Logística).</small>` : "");
+}
+function esperar(reg) {
+  clearInterval(espera); if (!(reg.estado === "bloqueada" && !reg.dictamen.bloqueante && reg.movimiento === "Salida a uso")) return;
+  espera = setInterval(async () => { const [s, r] = await api("/api/chequeos/" + reg.id); if (s === 200 && r.estado !== "bloqueada") { clearInterval(espera); pintar(r.dictamen, r); } }, 15000);
 }
 function actualizar() {
-  const c = datos(); const listo = c.frenos && c.luces && Object.values(c.kit).every(Boolean);
-  const falta = Object.values(c.kit).includes("Falta"), bloq = c.frenos === "NO" || c.luces === "NO";
+  const c = datos(); $("#c-otra").hidden = F.vehiculo.value !== OTRA;
+  const listo = c.frenos && c.luces && c.documentacion && (c.tipo === "Máquina" || c.vtv) && Object.values(c.kit).every(Boolean);
+  const falta = Object.values(c.kit).includes("Falta"), bloq = dictaminar(c).bloqueante;
   $("#c-aut").hidden = !(falta && !bloq && c.movimiento === "Salida a uso");
   if (bloq || listo) pintar(dictaminar(c)); else $("#c-dict").innerHTML = "";
 }
 F.tipo.onchange = () => { kit(); actualizar(); }; F.oninput = actualizar; F.onchange = actualizar;
 F.onsubmit = async (e) => {
-  e.preventDefault(); const c = datos(), err = [];
-  if (!c.guardia) err.push("Elegí el guardia (cargalo en la semana)"); if (!c.unidad) err.push("Falta la unidad");
-  if (!(c.medida >= 0) || F.medida.value === "") err.push("Cargá km u horas"); if (!c.frenos || !c.luces) err.push("Marcá frenos y luces");
-  if (Object.values(c.kit).some((v) => !v)) err.push("Marcá todo el kit (Está / Falta)");
-  $("#c-err").textContent = err.join(" · "); if (err.length) return;
-  const [s, r] = await api("/api/chequeos", c);
-  if (s === 201) { pintar(r.dictamen, true); $("#c-dict").scrollIntoView({ behavior: "smooth" }); } else $("#c-err").textContent = (r.errores || ["Error"]).join(" · ");
+  e.preventDefault(); const c = datos(), err = validarChequeo(c);
+  $("#c-err").textContent = err.join(" · "); if (err.length) return $("#c-err").scrollIntoView({ behavior: "smooth" });
+  $("#c-enviar").disabled = true; const [s, r] = await api("/api/chequeos", c).finally(() => ($("#c-enviar").disabled = false));
+  if (s === 201) { pintar(r.dictamen, r); esperar(r); F.legajo.value = F.dni.value = ""; $("#c-dict").scrollIntoView({ behavior: "smooth" }); } else $("#c-err").textContent = errores(r);
 };
 // ---------- Devolución de llave ----------
 const L = $("#l-f");
 $("#l-checks").innerHTML = RESTRICCIONES.map((r) => `<label class="chk"><input type="checkbox" name="restr" value="${r}">${r}</label>`).join("");
 const ahora = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
 L.fechaHora.value = ahora();
-const leerLlave = () => ({ unidad: L.unidad.value.trim(), color: L.color.value, restricciones: [...L.querySelectorAll("[name=restr]:checked")].map((x) => x.value),
-  otra: L.otra.value.trim(), entrego: L.entrego.value.trim(), guardia: L.guardia.value, fechaHora: L.fechaHora.value, observaciones: L.observaciones.value.trim() });
+const leerLlave = () => { const v = L.vehiculo.value; return { vehiculoId: v && v !== OTRA ? +v : null, unidad: v === OTRA ? L.unidad.value.trim() : "", color: L.color.value,
+  restricciones: [...L.querySelectorAll("[name=restr]:checked")].map((x) => x.value), otra: L.otra.value.trim(), entrego: L.entrego.value.trim(), guardiaId: +L.guardia.value || null,
+  fechaHora: L.fechaHora.value, legajo: L.legajo.value.trim(), dni: L.dni.value.trim(), observaciones: L.observaciones.value.trim() }; };
 function pintarLlave(l, final) {
   const el = $("#l-res"); if (!l.color) return (el.innerHTML = "");
   el.className = "dict " + l.color;
   const rs = l.color === "AMARILLO" ? [...l.restricciones, l.otra].filter(Boolean) : [];
   el.innerHTML = `<small>${final ? "Devolución registrada" : "Llavero"}</small><big>${l.color}</big><b>${esc(LLAVEROS[l.color])}</b>${rs.length ? `<small>${rs.map(esc).join(" · ")}</small>` : ""}`;
 }
-L.onchange = L.oninput = () => { const l = leerLlave(); $("#l-restr").hidden = l.color !== "AMARILLO"; pintarLlave(l); };
+L.onchange = L.oninput = () => { const l = leerLlave(); $("#l-restr").hidden = l.color !== "AMARILLO"; $("#l-otra").hidden = L.vehiculo.value !== OTRA; pintarLlave(l); };
 L.onsubmit = async (e) => {
   e.preventDefault(); const l = leerLlave(), err = validarLlave({ ...l, fechaHora: l.fechaHora && l.fechaHora + ":00" });
   $("#l-err").textContent = err.join(" · "); if (err.length) return;
   const [s, r] = await api("/api/llaves", l);
-  if (s === 201) { pintarLlave(r, true); $("#l-res").scrollIntoView({ behavior: "smooth" }); } else $("#l-err").textContent = (r.errores || ["Error"]).join(" · ");
+  if (s === 201) { pintarLlave(r, true); L.legajo.value = L.dni.value = ""; $("#l-res").scrollIntoView({ behavior: "smooth" }); } else $("#l-err").textContent = errores(r);
 };
 // ---------- Registros ----------
 async function registros() {
   const [, ch] = await api("/api/chequeos"); const [, ll] = await api("/api/llaves"); await cargarSemana();
   $("#r-llave").innerHTML = ll.length ? ll.slice(0, 20).map((l) => `<div class="reg ${l.color}"><b>${l.color}</b> · ${esc(l.unidad)} · entregó ${esc(l.entrego)} · recibió ${esc(l.guardia)}<br>
     <small>${new Date(l.fechaHora).toLocaleString("es-AR")}${l.restricciones.length || l.otra ? " · " + [...l.restricciones, l.otra].filter(Boolean).map(esc).join(", ") : ""}</small></div>`).join("") : "<p>Sin devoluciones.</p>";
-  $("#r-cheq").innerHTML = ch.length ? ch.slice(0, 20).map((c) => `<div class="reg ${c.dictamen.resultado === "APTO" ? "" : "NO"}"><b>${c.dictamen.resultado}</b> · ${esc(c.movimiento)} · ${esc(c.unidad)} (${esc(c.tipo)}) · ${esc(c.acceso)}<br>
-    <small>${new Date(c.fecha).toLocaleString("es-AR")} · ${esc(c.guardia)}${c.dictamen.motivos.length ? " · " + c.dictamen.motivos.map(esc).join(", ") : ""}</small></div>`).join("") : "<p>Sin chequeos.</p>";
+  $("#r-cheq").innerHTML = ch.length ? ch.slice(0, 20).map((c) => `<div class="reg ${c.dictamen.resultado === "APTO" || c.estado === "salida_autorizada" ? "" : "NO"}"><b>${c.dictamen.resultado}</b> · ${esc(c.estadoTexto)} · ${esc(c.numero)} · ${esc(c.movimiento)} · ${esc(c.unidad)} (${esc(c.tipo)}) · ${esc(c.acceso)}<br>
+    <small>${new Date(c.fecha).toLocaleString("es-AR")} · ${esc(c.guardia)}${c.dictamen.motivos.length ? " · " + c.dictamen.motivos.map(esc).join(", ") : ""}${c.autorizacion ? `<br><b>Salida autorizada por ${esc(c.autorizacion.por)} – ${esc(c.autorizacion.motivo)}</b>` : ""}</small></div>`).join("") : "<p>Sin chequeos.</p>";
   $("#r-guard").innerHTML = semana ? semana.dias.map((d) => `<div class="reg"><b>${d.fecha.split("-").reverse().join("/")}</b><br>${d.guardias.map((g) => `${g.turno}: ${esc(g.nombre)} (${esc(g.empresa)}) · ${g.puesto}`).join("<br>")}</div>`).join("") : "<p>No hay semana cargada.</p>";
 }
 // ---------- Rutas ----------
@@ -122,17 +141,18 @@ function ruta() {
 addEventListener("hashchange", ruta);
 $("#i-f").onsubmit = async (e) => {
   e.preventDefault(); const k = $("#i-clave").value.trim().toUpperCase();
-  const r = await fetch("/api/semana", { headers: { "x-access-key": k } });
-  if (r.status === 401) return ($("#i-err").textContent = "Clave incorrecta");
+  const r = await fetch("/api/catalogos", { headers: { "x-access-key": k } });
+  if (r.status === 401) return ($("#i-err").textContent = "Clave de acceso incorrecta");
+  if (!r.ok) return ($("#i-err").textContent = "No se pudo conectar con Odoo. Probá de nuevo en un minuto.");
   clave = k; localStorage.setItem("s360-clave", k); iniciar();
 };
 async function descargar(u, nombre) {
   const r = await fetch(u, { headers: { "x-access-key": clave } }); if (!r.ok) return;
   const a = document.createElement("a"); a.href = URL.createObjectURL(await r.blob()); a.download = nombre; a.click();
 }
-$("#x-cheq").onclick = (e) => { e.preventDefault(); descargar("/api/export/chequeos.csv", "chequeos.csv"); };
-$("#x-guard").onclick = (e) => { e.preventDefault(); descargar("/api/export/guardias.csv", "guardias.csv"); };
-$("#x-llave").onclick = (e) => { e.preventDefault(); descargar("/api/export/llaves.csv", "llaves.csv"); };
+$("#x-cheq").onclick = (e) => { e.preventDefault(); descargar("/api/export/chequeos.csv", "seguridad-360-chequeos.csv"); };
+$("#x-guard").onclick = (e) => { e.preventDefault(); descargar("/api/export/guardias.csv", "seguridad-360-guardias.csv"); };
+$("#x-llave").onclick = (e) => { e.preventDefault(); descargar("/api/export/llaves.csv", "seguridad-360-llaves.csv"); };
 $("#s-inicio").value = lunes(); kit();
-const iniciar = () => cargarSemana().then(() => { if (semana) $("#s-inicio").value = semana.inicio; armarSemana(); ruta(); }).catch(() => {});
+const iniciar = () => cargarCatalogos().then(cargarSemana).then(() => { if (semana) $("#s-inicio").value = semana.inicio; armarSemana(); ruta(); }).catch(() => {});
 if (clave) iniciar(); else mostrarIngreso();

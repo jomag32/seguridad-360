@@ -1,4 +1,4 @@
-# Plan free: el disco es efímero (datos/registros.json se pierde en cada redeploy/reinicio).
+# Seguridad 360: los datos viven en Odoo; el servicio no guarda nada en disco.
 services:
   - type: web
     name: arme-seguridad-360
@@ -14,7 +14,11 @@ services:
         sync: false
       - key: NODE_VERSION
         value: "20"
-      - key: DATA_DIR
-        value: /tmp/data
-    # Con plan starter (pago) se puede persistir con disco:
-    # disk: { name: datos, mountPath: /var/data, sizeGB: 1 }  y DATA_DIR=/var/data
+      - key: ODOO_URL
+        sync: false
+      - key: ODOO_DB
+        sync: false
+      - key: ODOO_USER
+        sync: false
+      - key: ODOO_PASSWORD
+        sync: false
