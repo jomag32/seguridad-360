@@ -7,7 +7,8 @@ const h = { "x-access-key": "prueba7", "content-type": "application/json" };
 const post = async (u, b) => { const r = await fetch(base + u, { method: "POST", headers: h, body: JSON.stringify(b) }); return [r.status, await r.json()]; };
 const get = async (u) => { const r = await fetch(base + u, { headers: h }); return [r.status, await r.json()]; };
 const chq = { movimiento: "Salida a uso", guardiaId: 1, legajo: "l-10", dni: "20111222", vehiculoId: 5, tipo: "Liviano", portonId: 2, medida: 1200, frenos: "OK", luces: "OK",
-  vtv: "Sí", documentacion: "Sí", kit: { Matafuego: "Está", Balizas: "Está", Gato: "Está", "Llave de rueda": "Está" } };
+  vtv: "Sí", documentacion: "Sí", kit: { Matafuego: "Está", Balizas: "Está", Gato: "Está", "Llave de rueda": "Está" },
+  fluidos: { frenos: "Medio", refrigerante: "Máximo", aceite: "Mínimo" } };
 test("healthz sin clave; API sin clave o con clave mala → 401", async () => {
   assert.equal((await fetch(base + "/healthz")).status, 200);
   for (const u of ["/api/semana", "/api/chequeos", "/api/catalogos", "/api/export/chequeos.csv"]) assert.equal((await fetch(base + u)).status, 401);
@@ -61,4 +62,14 @@ test("semana con guardias del maestro: guarda turnos en Odoo y la devuelve", asy
 test("sin Odoo configurado → 503 con mensaje", async () => {
   const s2 = http.createServer(crearApp(null)).listen(0); const r = await fetch(`http://localhost:${s2.address().port}/api/semana`, { headers: h }); s2.close();
   assert.equal(r.status, 503);
+});
+
+test("salida: falta nivel de fluidos → 422; fluido bajo el mínimo → NO APTO bloqueante y se guarda en Odoo", async () => {
+  const [s1, r1] = await post("/api/chequeos", { ...chq, vehiculoId: null, unidad: "FL-001", fluidos: { frenos: "Medio" } });
+  assert.equal(s1, 422); assert.match(r1.errores.join(), /fluidos/);
+  const [s2, r2] = await post("/api/chequeos", { ...chq, vehiculoId: null, unidad: "FL-002", fluidos: { ...chq.fluidos, aceite: "Bajo el mínimo" } });
+  assert.equal(s2, 201); assert.equal(r2.dictamen.resultado, "NO APTO"); assert.ok(r2.dictamen.bloqueante); assert.ok(r2.dictamen.motivos.includes("Aceite de motor bajo el mínimo"));
+  assert.equal(r2.fluidos.aceite, "Bajo el mínimo"); assert.equal(r2.fluidos.frenos, "Medio");
+  const [s3, r3] = await post("/api/chequeos", { ...chq, movimiento: "Retorno de uso", vehiculoId: null, unidad: "FL-003", fluidos: undefined });
+  assert.equal(s3, 201); assert.deepEqual(r3.fluidos, {});
 });

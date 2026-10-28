@@ -3,7 +3,7 @@
 // · NUNCA intercepta /api/ (datos de Odoo, CSV) ni pedidos que no sean GET ni otros orígenes:
 //   las respuestas de la API y la clave de acceso (header x-access-key / localStorage) jamás pasan por la caché.
 // · VERSION: subirla en cada deploy que cambie la cáscara.
-const VERSION = "2026-10-28.1";
+const VERSION = "2026-10-28.2";
 const CACHE = `seg360-cascara-${VERSION}`;
 const RED_MS = 4000;
 const CASCARA = ["/", "/index.html", "/app.js", "/regla.js", "/estilo.css", "/manifest.webmanifest",

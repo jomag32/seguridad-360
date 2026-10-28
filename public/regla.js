@@ -11,16 +11,20 @@ export const ACCESOS = [
   ["A04", "A04 Portón Taller"], ["A05", "A05"], ["A06", "A06"], ["A07", "A07"], ["A08", "A08"],
   ["A09", "A09"], ["A10", "A10"], ["A11", "A11"], ["A12", "A12"],
 ];
+// Nivel de fluidos: solo en «Salida a uso». «Bajo el mínimo» es falla BLOQUEANTE (como frenos/luces): la unidad no sale y no se puede autorizar.
+export const FLUIDOS = [["frenos", "Líquido de frenos"], ["refrigerante", "Refrigerante"], ["aceite", "Aceite de motor"]];
+export const NIVELES = ["Bajo el mínimo", "Mínimo", "Medio", "Máximo"];
 export const PUESTOS = [["S06", "Garita (S06)"], ...ACCESOS];
 
 // c = {movimiento, tipo, frenos:'OK'|'NO', luces, vtv:'Sí'|'No', documentacion:'Sí'|'No', kit:{item:'Está'|'Falta'}}
-// Frenos, luces, VTV/RTO y documentación son BLOQUEANTES: nunca se autorizan. Solo el faltante de kit lo puede autorizar el Jefe de Logística en Odoo.
+// Frenos, luces, VTV/RTO, documentación y (en salida) fluido bajo el mínimo son BLOQUEANTES: nunca se autorizan. Solo el faltante de kit lo puede autorizar el Jefe de Logística en Odoo.
 export function dictaminar(c) {
   const motivos = [];
   if (c.frenos !== "OK") motivos.push("Frenos NO");
   if (c.luces !== "OK") motivos.push("Luces NO");
   if (c.tipo !== "Máquina" && c.vtv !== "Sí") motivos.push("VTV / RTO no vigente");
   if (c.documentacion !== "Sí") motivos.push("Documentación incompleta (cédula, seguro, VTV)");
+  if (c.movimiento === "Salida a uso") FLUIDOS.forEach(([k, t]) => { if ((c.fluidos || {})[k] === "Bajo el mínimo") motivos.push(t + " bajo el mínimo"); });
   if (motivos.length) return { resultado: "NO APTO", bloqueante: true, motivos, texto: "La unidad no sale. No se puede autorizar (ni el Jefe de Logística)" };
   const items = KIT[c.tipo] || [];
   const faltan = items.filter((i) => (c.kit || {})[i] !== "Está");
@@ -81,6 +85,7 @@ export function validarChequeo(c) {
   if (c?.tipo !== "Máquina" && !["Sí", "No"].includes(c?.vtv)) e.push("Marcá si la VTV / RTO está vigente");
   if (!["Sí", "No"].includes(c?.documentacion)) e.push("Marcá si la documentación está completa");
   if (Object.values(c?.kit || {}).some((v) => !v) || (KIT[c?.tipo] || []).some((i) => !(c.kit || {})[i])) e.push("Marcá todo el kit (Está / Falta)");
+  if (c?.movimiento === "Salida a uso" && FLUIDOS.some(([k]) => !NIVELES.includes((c.fluidos || {})[k]))) e.push("Marcá el nivel de los 3 fluidos (frenos, refrigerante, aceite)");
   if (!c?.legajo?.trim() || !c?.dni?.trim()) e.push("Firma: cargá legajo y DNI del guardia");
   return e;
 }

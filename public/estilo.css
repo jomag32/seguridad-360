@@ -24,3 +24,4 @@ nav a{font-size:15px}
 .dict.ROJO{background:#fee2e2;color:#7f1d1d;border:3px solid #dc2626}.dict.AMARILLO{background:#fef9c3;color:#713f12;border:3px solid #ca8a04}.dict.VERDE{background:#dcfce7;color:#14532d;border:3px solid #16a34a}
 .chk{display:flex;align-items:center;gap:8px;font-weight:600}.chk input{width:22px;height:22px;margin:0}
 .reg.ROJO{border-color:#dc2626}.reg.AMARILLO{border-color:#ca8a04}
+.niveles label{flex:1 1 40%;font-size:.95em;padding:10px 4px}

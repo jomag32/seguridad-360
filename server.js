@@ -48,8 +48,8 @@ export function crearApp(datos) {
         return json(r, 201, await datos.crearLlave(b, g));
       }
       if (u.pathname === "/api/export/chequeos.csv") {
-        const f = [["numero", "fecha", "movimiento", "guardia", "unidad", "tipo", "porton", "km_horas", "frenos", "luces", "vtv_rto", "documentacion", "kit", "resultado", "motivos", "estado", "autorizo", "motivo_autorizacion", "observaciones"]];
-        (await datos.chequeos(0)).forEach((c) => f.push([c.numero, c.fecha, c.movimiento, c.guardia, c.unidad, c.tipo, c.acceso, c.medida, c.frenos, c.luces, c.vtv, c.documentacion,
+        const f = [["numero", "fecha", "movimiento", "guardia", "unidad", "tipo", "porton", "km_horas", "frenos", "luces", "vtv_rto", "documentacion", "liq_frenos", "refrigerante", "aceite_motor", "kit", "resultado", "motivos", "estado", "autorizo", "motivo_autorizacion", "observaciones"]];
+        (await datos.chequeos(0)).forEach((c) => f.push([c.numero, c.fecha, c.movimiento, c.guardia, c.unidad, c.tipo, c.acceso, c.medida, c.frenos, c.luces, c.vtv, c.documentacion, c.fluidos?.frenos, c.fluidos?.refrigerante, c.fluidos?.aceite,
           Object.entries(c.kit).map(([k, v]) => `${k}:${v}`).join(" | "), c.dictamen.resultado, c.dictamen.motivos.join(" | "), c.estadoTexto, c.autorizacion?.por, c.autorizacion?.motivo, c.observaciones]));
         return enviarCsv(r, "chequeos", f);
       }

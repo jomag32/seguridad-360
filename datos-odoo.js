@@ -9,12 +9,16 @@ const TIPO_INV = Object.fromEntries(Object.entries(TIPO).map(([a, b]) => [b, a])
 const COLOR = { ROJO: "rojo", AMARILLO: "amarillo", VERDE: "verde" };
 const RESTR = { "No salir a ruta": "x_restr_ruta", "No superar 60 km/h": "x_restr_60", "Controlar agua y aceite": "x_restr_agua_aceite" };
 const ESTADO = { habilitada: "Habilitada", bloqueada: "No apto – bloqueado", salida_autorizada: "Salida autorizada", liberada: "Liberada" };
+// Nivel de fluidos (solo salida). Campos selección en Odoo: ver scripts/odoo-seg360-fluidos.py
+const NIVEL = { "Bajo el mínimo": "bajo", "Mínimo": "minimo", "Medio": "medio", "Máximo": "maximo" };
+const NIVEL_INV = Object.fromEntries(Object.entries(NIVEL).map(([a, b]) => [b, a]));
+const FL = { frenos: "x_nivel_liq_frenos", refrigerante: "x_nivel_refrigerante", aceite: "x_nivel_aceite" };
 const n = (v) => (Array.isArray(v) ? v[1] : "");
 const id = (v) => (Array.isArray(v) ? v[0] : null);
 const kitTexto = (k) => Object.entries(k || {}).map(([a, b]) => `${a}: ${b}`).join("\n");
 const kitObj = (t) => Object.fromEntries(String(t || "").split("\n").filter(Boolean).map((l) => l.split(": ")));
 const CH_F = ["x_name", "x_fecha_hora", "x_movimiento", "x_guardia_id", "x_vehiculo_id", "x_unidad_texto", "x_tipo", "x_porton_id", "x_km_horas", "x_frenos", "x_luces",
-  "x_kit", "x_vtv_vigente", "x_documentacion", "x_dictamen", "x_motivos", "x_bloqueante", "x_estado", "x_aut_salida_por_id", "x_aut_salida_motivo", "x_aut_salida_fecha", "x_observaciones", "x_firma_verificada"];
+  "x_kit", "x_vtv_vigente", "x_documentacion", "x_dictamen", "x_motivos", "x_bloqueante", "x_estado", "x_aut_salida_por_id", "x_aut_salida_motivo", "x_aut_salida_fecha", "x_observaciones", "x_firma_verificada", ...Object.values(FL)];
 const LL_F = ["x_name", "x_fecha_hora", "x_vehiculo_id", "x_unidad_texto", "x_color", "x_restr_ruta", "x_restr_60", "x_restr_agua_aceite", "x_restr_otra",
   "x_entrego", "x_guardia_id", "x_observaciones", "x_create_date", "create_date", "x_firma_verificada"];
 
@@ -26,6 +30,7 @@ export function crearDatos(ejecutar) {
     dictamen: { resultado: r.x_dictamen === "apto" ? "APTO" : "NO APTO", bloqueante: !!r.x_bloqueante, motivos: r.x_motivos ? r.x_motivos.split(" | ") : [] },
     estado: r.x_estado, estadoTexto: ESTADO[r.x_estado] || r.x_estado, firmaVerificada: !!r.x_firma_verificada,
     autorizacion: r.x_estado === "salida_autorizada" ? { por: n(r.x_aut_salida_por_id), motivo: r.x_aut_salida_motivo || "", fecha: deOdoo(r.x_aut_salida_fecha) } : null,
+    fluidos: Object.fromEntries(Object.entries(FL).filter(([, f]) => r[f]).map(([k, f]) => [k, NIVEL_INV[r[f]] || r[f]])),
     observaciones: r.x_observaciones || "" });
   const mapLl = (r) => ({ id: r.id, numero: r.x_name, fechaHora: deOdoo(r.x_fecha_hora), unidad: n(r.x_vehiculo_id) || r.x_unidad_texto || "", color: (r.x_color || "").toUpperCase(),
     restricciones: Object.entries(RESTR).filter(([, f]) => r[f]).map(([t]) => t), otra: r.x_restr_otra || "", entrego: r.x_entrego, guardia: n(r.x_guardia_id),
@@ -55,7 +60,8 @@ export function crearDatos(ejecutar) {
         x_guardia_id: +c.guardiaId, x_vehiculo_id: c.vehiculoId ? +c.vehiculoId : false, x_unidad_texto: c.vehiculoId ? false : c.unidad.trim(), x_tipo: TIPO[c.tipo],
         x_porton_id: +c.portonId, x_km_horas: Number(c.medida), x_frenos: c.frenos === "OK" ? "ok" : "no", x_luces: c.luces === "OK" ? "ok" : "no", x_kit: kitTexto(c.kit), x_vtv_vigente: c.tipo === "Máquina" ? "na" : c.vtv === "Sí" ? "si" : "no", x_documentacion: c.documentacion === "Sí" ? "si" : "no",
         x_dictamen: d.resultado === "APTO" ? "apto" : "no_apto", x_motivos: d.motivos.join(" | "), x_bloqueante: !!d.bloqueante, x_observaciones: (c.observaciones || "").trim(),
-        x_firma_legajo: g.x_legajo, x_firma_verificada: true, x_firma_fecha: aOdoo(ahora), x_clave_envio: c.claveEnvio || false }]);
+        x_firma_legajo: g.x_legajo, x_firma_verificada: true, x_firma_fecha: aOdoo(ahora), x_clave_envio: c.claveEnvio || false,
+        ...Object.fromEntries(Object.entries(FL).map(([k, f]) => [f, c.movimiento === "Salida a uso" ? NIVEL[(c.fluidos || {})[k]] || false : false])) }]);
       return this.chequeo(nuevo);
     },
     async chequeo(i) { const [r] = await ejecutar("x_seg360_chequeo", "read", [[+i]], { fields: CH_F }); return r ? mapCh(r) : null; },

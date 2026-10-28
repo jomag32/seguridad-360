@@ -1,4 +1,4 @@
-import { TIPOS, KIT, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave, validarChequeo } from "./regla.js";
+import { TIPOS, KIT, FLUIDOS, NIVELES, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave, validarChequeo } from "./regla.js";
 const $ = (s) => document.querySelector(s), esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const opts = (l, sel) => l.map(([v, t]) => `<option value="${v}"${v === sel ? " selected" : ""}>${esc(t)}</option>`).join("");
 let clave = localStorage.getItem("s360-clave") || "";
@@ -64,12 +64,15 @@ function kit() {
   $("#c-medlbl").textContent = semi ? "Km (semirremolque = 0)" : maq ? "Horas" : "Km";
   $("#c-medida").readOnly = semi; if (semi) $("#c-medida").value = 0; $("#c-vtvf").hidden = maq;
 }
+$("#c-fluidos").innerHTML += FLUIDOS.map(([k, t]) => `<fieldset class="seg niveles"><legend>${t}</legend>` +
+  NIVELES.map((n, i) => `<label${i ? "" : ' class="no"'}><input type="radio" name="fl_${k}" value="${n}">${n}</label>`).join("") + "</fieldset>").join("");
 function datos() {
   const t = F.tipo.value, k = {}; KIT[t].forEach((i, n) => (k[i] = F["kit" + n].value || ""));
   const v = F.vehiculo.value;
   return { movimiento: F.movimiento.value, guardiaId: +F.guardia.value || null, vehiculoId: v && v !== OTRA ? +v : null, unidad: v === OTRA ? F.unidad.value.trim() : "",
     tipo: t, portonId: +F.porton.value || null, medida: F.medida.value === "" ? "" : Number(F.medida.value), frenos: F.frenos.value, luces: F.luces.value,
-    vtv: t === "Máquina" ? "" : F.vtv.value, documentacion: F.documentacion.value, kit: k, legajo: F.legajo.value.trim(), dni: F.dni.value.trim(), observaciones: F.observaciones.value.trim() };
+    vtv: t === "Máquina" ? "" : F.vtv.value, documentacion: F.documentacion.value, kit: k,
+    fluidos: F.movimiento.value === "Salida a uso" ? Object.fromEntries(FLUIDOS.map(([f]) => [f, F["fl_" + f].value || ""])) : {}, legajo: F.legajo.value.trim(), dni: F.dni.value.trim(), observaciones: F.observaciones.value.trim() };
 }
 let espera = null;
 function pintar(d, reg) {
@@ -87,8 +90,8 @@ function esperar(reg) {
   espera = setInterval(async () => { const [s, r] = await api("/api/chequeos/" + reg.id); if (s === 200 && r.estado !== "bloqueada") { clearInterval(espera); pintar(r.dictamen, r); } }, 15000);
 }
 function actualizar() {
-  const c = datos(); $("#c-otra").hidden = F.vehiculo.value !== OTRA;
-  const listo = c.frenos && c.luces && c.documentacion && (c.tipo === "Máquina" || c.vtv) && Object.values(c.kit).every(Boolean);
+  const c = datos(); $("#c-otra").hidden = F.vehiculo.value !== OTRA; $("#c-fluidos").hidden = c.movimiento !== "Salida a uso";
+  const listo = c.frenos && c.luces && c.documentacion && (c.tipo === "Máquina" || c.vtv) && Object.values(c.kit).every(Boolean) && Object.values(c.fluidos).every(Boolean);
   const falta = Object.values(c.kit).includes("Falta"), bloq = dictaminar(c).bloqueante;
   $("#c-aut").hidden = !(falta && !bloq && c.movimiento === "Salida a uso");
   if (bloq || listo) pintar(dictaminar(c)); else $("#c-dict").innerHTML = "";

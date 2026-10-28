@@ -28,3 +28,9 @@ test("llave: color inválido; amarillo exige restricción u otra", () => {
   assert.deepEqual(validarLlave({ ...ll, color: "AMARILLO", otra: "Solo dentro del predio" }), []);
 });
 test("llave: faltan unidad, entregó, guardia y firma", () => assert.equal(validarLlave({ color: "ROJO", fechaHora: "2026-10-25T20:30" }).length, 4));
+test("salida con fluido bajo el mínimo → NO APTO bloqueante; Mínimo es APTO; retorno no lo evalúa", () => {
+  const f = { frenos: "Mínimo", refrigerante: "Medio", aceite: "Máximo" };
+  assert.equal(dictaminar({ ...base, fluidos: f }).resultado, "APTO");
+  const d = dictaminar({ ...base, fluidos: { ...f, refrigerante: "Bajo el mínimo" } }); assert.equal(d.resultado, "NO APTO"); assert.ok(d.bloqueante); assert.deepEqual(d.motivos, ["Refrigerante bajo el mínimo"]);
+  assert.equal(dictaminar({ ...base, movimiento: "Retorno de uso", fluidos: { ...f, aceite: "Bajo el mínimo" } }).resultado, "APTO");
+});
