@@ -5,7 +5,7 @@ import http from "node:http"; import fs from "node:fs"; import path from "node:p
 import { dictaminar, validarSemana, validarLlave, validarChequeo, RESTRICCIONES } from "./public/regla.js";
 import { crearCliente, ErrorOdoo } from "./odoo.js"; import { crearDatos } from "./datos-odoo.js";
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
-const TIPO = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
+const TIPO = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".ico": "image/x-icon" };
 const json = (r, c, o) => { r.writeHead(c, { "content-type": "application/json" }); r.end(JSON.stringify(o)); };
 const cuerpo = (q) => new Promise((ok, mal) => { let b = ""; q.on("data", (d) => { b += d; if (b.length > 1e6) q.destroy(); }); q.on("end", () => { try { ok(JSON.parse(b || "{}")); } catch (e) { mal(e); } }); });
 const csv = (filas) => "\ufeff" + filas.map((f) => f.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");

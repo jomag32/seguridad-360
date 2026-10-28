@@ -1,5 +1,13 @@
 <!doctype html><html lang="es-AR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Seguridad 360</title><meta name="application-name" content="Seguridad 360"><meta name="apple-mobile-web-app-title" content="Seguridad 360"><link rel="stylesheet" href="estilo.css"></head><body>
+<title>Seguridad 360</title><meta name="application-name" content="Seguridad 360"><meta name="apple-mobile-web-app-title" content="Seguridad 360"><meta name="theme-color" content="#0b3d6b">
+<meta name="description" content="Garita S06 · chequeo de unidades, guardias y llaves (Tecnología ARME).">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/iconos/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/iconos/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="estilo.css"></head><body>
 <header><b>Seguridad 360</b><span>Garita S06 · Tecnología ARME</span></header>
 <nav><a href="#semana">Guardias</a><a href="#chequeo">Chequeo</a><a href="#llave">Llave</a><a href="#registros">Registros</a></nav>
 <main>
@@ -49,4 +57,5 @@
 <section id="v-registros" hidden><h1>Registros</h1>
  <p><a class="btn" id="x-cheq" href="#">CSV chequeos</a> <a class="btn" id="x-guard" href="#">CSV guardias</a> <a class="btn" id="x-llave" href="#">CSV llaves</a></p>
  <p class="ayuda">Los registros quedan en Odoo (Seguridad 360).</p><h2>Últimos chequeos</h2><div id="r-cheq"></div><h2>Últimas devoluciones de llave</h2><div id="r-llave"></div><h2>Guardias de la semana</h2><div id="r-guard"></div></section>
-</main><script type="module" src="app.js"></script></body></html>
+</main><script type="module" src="app.js"></script>
+<script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));</script></body></html>
