@@ -21,12 +21,17 @@ export function odooFalso() {
     if (me === "read") return args[0].map((i) => db[mo].find((x) => x.id === i)).filter(Boolean).map((x) => ver(mo, x));
     if (me === "search") return filtrar(mo, args[0]).map((x) => x.id);
     if (me === "write" && mo === "x_seg360_chequeo") throw new Error("AccessError: Servicio API sin escritura en x_seg360_chequeo (como en Odoo)");
+    // Odoo 19: crear un ir.attachment exige permiso de ESCRITURA sobre el registro padre; el Servicio API no escribe x_seg360_chequeo
+    if (me === "create" && mo === "ir.attachment" && [].concat(args[0]).some((v) => v.res_model === "x_seg360_chequeo"))
+      throw new Error("AccessError: crear adjunto exige escritura sobre x_seg360_chequeo (como en Odoo)");
     if (me === "write") { db[mo].filter((x) => args[0].includes(x.id)).forEach((x) => Object.assign(x, args[1])); return true; }
     if (me === "unlink") { db[mo] = db[mo].filter((x) => !args[0].includes(x.id)); return true; }
     if (me === "create") {
       const vals = Array.isArray(args[0]) ? args[0] : [args[0]]; const ids = [];
       for (const v of vals) {
         const r = { ...v, id: ++sec, create_date: "2026-10-26 01:00:00" };
+        // campos binarios (attachment=True): Odoo crea el adjunto con sudo al crear el registro, con res_field
+        for (const f of Object.keys(r)) if (/^x_foto_\d$/.test(f) && r[f]) { db["ir.attachment"].push({ id: ++sec, res_model: mo, res_id: r.id, res_field: f, datas: r[f] }); delete r[f]; }
         if (mo === "x_seg360_chequeo") {
           const mism = (x) => (r.x_vehiculo_id ? x.x_vehiculo_id === r.x_vehiculo_id : !x.x_vehiculo_id && String(x.x_unidad_texto).toLowerCase() === String(r.x_unidad_texto).toLowerCase());
           if (r.x_movimiento === "salida" && db.x_seg360_chequeo.some((x) => mism(x) && x.x_estado === "bloqueada")) throw err("Unidad bloqueada por CHQ (NO APTO): no puede salir.");

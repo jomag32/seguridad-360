@@ -1,0 +1,21 @@
+// Capturas «fotos en el chequeo de portón» + «Emite humo» contra scripts/servidor-falso.js. Viewport móvil. Foto generada (sin datos reales).
+import { chromium } from "playwright-core";
+const b = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
+const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+const D = new URL("../capturas/", import.meta.url).pathname, U = "http://localhost:" + (process.env.PORT || 8361) + "/", img = process.env.FOTO || "/tmp/foto-fusiblera.jpg";
+await p.goto(U); await p.fill("#i-clave", process.env.ACCESS_KEY || "PRUEBA7"); await p.click("#i-f button");
+await p.goto(U + "#chequeo"); await p.waitForSelector("#c-guardia option:nth-child(2)", { state: "attached" });
+await p.check("[name=movimiento][value='Retorno de uso']").catch(() => p.selectOption("[name=movimiento]", "Retorno de uso"));
+await p.selectOption("#c-guardia", "1"); await p.selectOption("#c-vehiculo", "5"); await p.selectOption("#c-porton", { index: 1 }); await p.fill("#c-medida", "1600");
+for (const s of ["frenos][value=OK", "luces][value=OK", "humo][value=No", "vtv][value=Sí", "documentacion][value=Sí"]) await p.check(`[name=${s}]`);
+for (const n of [0, 1, 2, 3]) await p.check(`[name=kit${n}][value=Está]`);
+await p.locator("[name=humo]").first().scrollIntoViewIfNeeded(); await p.screenshot({ path: D + "fotos-chequeo-1-emite-humo-y-fotos-opcionales.png" });
+await p.check("[name=humo][value=Sí]"); await p.fill("#f [name=legajo]", "L-10"); await p.fill("#f [name=dni]", "20111222");
+await p.click("#c-enviar"); await p.waitForTimeout(300); await p.locator("#c-fotos").scrollIntoViewIfNeeded();
+await p.screenshot({ path: D + "fotos-chequeo-2-no-apto-exige-foto.png" });
+await p.setInputFiles(".fch[data-k=f1] input", img); await p.setInputFiles(".fch[data-k=f2] input", img); await p.waitForTimeout(400);
+await p.locator("#c-fotos").scrollIntoViewIfNeeded(); await p.screenshot({ path: D + "fotos-chequeo-3-fotos-cargadas.png" });
+await p.click("#c-enviar"); await p.waitForSelector("#c-dict small:has-text('registrado')"); await p.locator("#c-dict").scrollIntoViewIfNeeded();
+await p.screenshot({ path: D + "fotos-chequeo-4-no-apto-registrado.png" });
+await p.goto(U + "#logistica"); await p.reload(); await p.waitForSelector(".ing"); await p.screenshot({ path: D + "fotos-chequeo-5-ingreso-sin-fotos-pendientes.png", fullPage: true });
+await b.close();

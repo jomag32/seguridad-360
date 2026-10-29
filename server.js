@@ -2,7 +2,7 @@
 // Todo se guarda en Odoo (modelos x_seg360_*) con el usuario de servicio; la app es solo el frente para el teléfono.
 // Env: ACCESS_KEY, ODOO_URL, ODOO_DB, ODOO_USER, ODOO_PASSWORD (nunca van al código ni a los logs).
 import http from "node:http"; import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url"; import crypto from "node:crypto";
-import { dictaminar, validarSemana, validarLlave, validarChequeo, validarIngreso, validarValidacion, validarFotos, UBICACIONES, RESTRICCIONES } from "./public/regla.js";
+import { dictaminar, validarSemana, validarLlave, validarChequeo, validarIngreso, validarValidacion, validarFotos, UBICACIONES, RESTRICCIONES, validarFotosChequeo, fotosChequeo } from "./public/regla.js";
 import { crearCliente, ErrorOdoo } from "./odoo.js"; import { crearDatos } from "./datos-odoo.js";
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 const TIPO = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".ico": "image/x-icon" };
@@ -56,13 +56,15 @@ export function crearApp(datos) {
       const mc = u.pathname.match(/^\/api\/chequeos\/(\d+)$/);
       if (mc && q.method === "GET") { const c = await datos.chequeo(mc[1]); return c ? json(r, 200, c) : json(r, 404, { error: "no encontrado" }); }
       if (u.pathname === "/api/chequeos" && q.method === "POST") {
-        const c = await cuerpo(q); if (c.tipo === "Semirremolque") c.medida = 0;
+        const c = await cuerpo(q, 12e6); if (c.tipo === "Semirremolque") c.medida = 0;
         const e = validarChequeo(c); if (e.length) return json(r, 422, { errores: e });
-        delete c.foto; delete c.autorizacion; // sin foto; la excepción la autoriza solo el Jefe de Logística en Odoo
+        delete c.foto; delete c.autorizacion; // la excepción la autoriza solo el Jefe de Logística en Odoo
         const g = await datos.firmar(c.guardiaId, c.legajo, c.dni);
         if (!g) return json(r, 422, { errores: ["Firma: el legajo o el DNI no coinciden con el guardia elegido"] });
         if (c.movimiento !== "Salida a uso") c.estadoLogistica = "Apto";
         const d = dictaminar(c); // el dictamen lo recalcula SIEMPRE el servidor
+        const ef = validarFotosChequeo(c, d); if (ef.length) return json(r, 422, { errores: ef });
+        c.fotos = fotosChequeo(c);
         return json(r, 201, await datos.crearChequeo(c, d, g));
       }
       if (u.pathname === "/api/llaves" && q.method === "GET") return json(r, 200, await datos.llaves());
@@ -74,8 +76,8 @@ export function crearApp(datos) {
         return json(r, 201, await datos.crearLlave(b, g));
       }
       if (u.pathname === "/api/export/chequeos.csv") {
-        const f = [["numero", "fecha", "movimiento", "guardia", "unidad", "tipo", "porton", "km_horas", "frenos", "luces", "vtv_rto", "documentacion", "liq_frenos", "refrigerante", "aceite_motor", "kit", "resultado", "motivos", "estado", "autorizo", "motivo_autorizacion", "observaciones", "gravedad_obs", "observacion_falla", "ingreso_previsto", "logistica_obs", "ingreso_mantenimiento"]];
-        (await datos.chequeos(0)).forEach((c) => f.push([c.numero, c.fecha, c.movimiento, c.guardia, c.unidad, c.tipo, c.acceso, c.medida, c.frenos, c.luces, c.vtv, c.documentacion, c.fluidos?.frenos, c.fluidos?.refrigerante, c.fluidos?.aceite,
+        const f = [["numero", "fecha", "movimiento", "guardia", "unidad", "tipo", "porton", "km_horas", "frenos", "luces", "emite_humo", "fotos", "vtv_rto", "documentacion", "liq_frenos", "refrigerante", "aceite_motor", "kit", "resultado", "motivos", "estado", "autorizo", "motivo_autorizacion", "observaciones", "gravedad_obs", "observacion_falla", "ingreso_previsto", "logistica_obs", "ingreso_mantenimiento"]];
+        (await datos.chequeos(0)).forEach((c) => f.push([c.numero, c.fecha, c.movimiento, c.guardia, c.unidad, c.tipo, c.acceso, c.medida, c.frenos, c.luces, c.humo, c.fotos, c.vtv, c.documentacion, c.fluidos?.frenos, c.fluidos?.refrigerante, c.fluidos?.aceite,
           Object.entries(c.kit).map(([k, v]) => `${k}:${v}`).join(" | "), c.dictamen.resultado, c.dictamen.motivos.join(" | "), c.estadoTexto, c.autorizacion?.por, c.autorizacion?.motivo, c.observaciones, c.conObservacion?.gravedad, c.conObservacion?.observacion, c.conObservacion?.ingresoPrevisto, c.conObservacion?.logistica, c.ingresoId]));
         return enviarCsv(r, "chequeos", f);
       }

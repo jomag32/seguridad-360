@@ -1,4 +1,4 @@
-import { TIPOS, KIT, FLUIDOS, NIVELES, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave, validarChequeo, PLAZOS_H, ingresoPrevisto, CAUSAS, SISTEMAS, LLEGADAS, PRIORIDADES, FOTOS, fotosExigidas, validarIngreso, validarValidacion, validarFotos, UBICACIONES } from "./regla.js";
+import { TIPOS, KIT, FLUIDOS, NIVELES, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave, validarChequeo, PLAZOS_H, ingresoPrevisto, CAUSAS, SISTEMAS, LLEGADAS, PRIORIDADES, FOTOS, fotosExigidas, validarIngreso, validarValidacion, validarFotos, UBICACIONES, FOTOS_CHEQUEO_MAX, validarFotosChequeo } from "./regla.js";
 const $ = (s) => document.querySelector(s), esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const opts = (l, sel) => l.map(([v, t]) => `<option value="${v}"${v === sel ? " selected" : ""}>${esc(t)}</option>`).join("");
 let clave = localStorage.getItem("s360-clave") || "";
@@ -70,7 +70,7 @@ function datos() {
   const t = F.tipo.value, k = {}; KIT[t].forEach((i, n) => (k[i] = F["kit" + n].value || ""));
   const v = F.vehiculo.value;
   return { movimiento: F.movimiento.value, guardiaId: +F.guardia.value || null, vehiculoId: v && v !== OTRA ? +v : null, unidad: v === OTRA ? F.unidad.value.trim() : "",
-    tipo: t, portonId: +F.porton.value || null, medida: F.medida.value === "" ? "" : Number(F.medida.value), frenos: F.frenos.value, luces: F.luces.value,
+    tipo: t, portonId: +F.porton.value || null, medida: F.medida.value === "" ? "" : Number(F.medida.value), frenos: F.frenos.value, luces: F.luces.value, humo: F.humo.value, fotos: { ...fotosCh },
     vtv: t === "Máquina" ? "" : F.vtv.value, documentacion: F.documentacion.value, kit: k,
     fluidos: F.movimiento.value === "Salida a uso" ? Object.fromEntries(FLUIDOS.map(([f]) => [f, F["fl_" + f].value || ""])) : {}, legajo: F.legajo.value.trim(), dni: F.dni.value.trim(), observaciones: F.observaciones.value.trim(),
     estadoLogistica: F.movimiento.value === "Salida a uso" ? F.estadoLogistica.value : "Apto", gravedad: F.gravedad.value, observacionFalla: F.observacionFalla.value.trim(), ingresoPrevisto: F.ingresoPrevisto.value, logistica: F.logistica.value.trim() };
@@ -93,7 +93,7 @@ function pintar(d, reg) {
     : reg.estado === "bloqueada" ? `<b>BLOQUEADA: la unidad no sale.</b>${!d.bloqueante && reg.movimiento === "Salida a uso" ? "<small>Esperando autorización del Jefe de Logística en Odoo… (se actualiza sola)</small>" : ""}`
     : reg.estado === "liberada" ? "<b>Liberada por un Responsable.</b>" : "";
   el.innerHTML = `<small>${reg ? "Dictamen registrado · " + esc(reg.numero) : "Dictamen"}</small><big>${aut ? "SALIDA AUTORIZADA" : d.resultado}</big>${reg ? "" : `<b>${esc(d.texto)}</b>`}${estado}` +
-    (d.motivos.length ? `<small>${d.motivos.map(esc).join(" · ")}</small>` : "") + (d.bloqueante ? `<small>Falla bloqueante: no se puede autorizar (ni el Jefe de Logística).</small>` : "");
+    (d.motivos.length ? `<small>${d.motivos.map(esc).join(" · ")}</small>` : "") + (d.bloqueante ? `<small>Falla bloqueante: no se puede autorizar (ni el Jefe de Logística).</small>` : "") + (reg?.fotos ? `<small>${reg.fotos} foto${reg.fotos > 1 ? "s" : ""} adjunta${reg.fotos > 1 ? "s" : ""} al chequeo${reg.ingresoId ? " y al ingreso a mantenimiento" : ""}</small>` : "");
 }
 function esperar(reg) {
   clearInterval(espera); if (!(reg.estado === "bloqueada" && !reg.dictamen.bloqueante && reg.movimiento === "Salida a uso")) return;
@@ -102,18 +102,26 @@ function esperar(reg) {
 function actualizar() {
   const c = datos(); $("#c-otra").hidden = F.vehiculo.value !== OTRA; $("#c-fluidos").hidden = c.movimiento !== "Salida a uso";
   $("#c-obs").hidden = c.movimiento !== "Salida a uso"; $("#c-obsdet").hidden = c.estadoLogistica !== "Apto con observación"; if (!$("#c-obsdet").hidden) { previsto(c); c.ingresoPrevisto = F.ingresoPrevisto.value; }
-  const listo = c.frenos && c.luces && c.documentacion && (c.tipo === "Máquina" || c.vtv) && Object.values(c.kit).every(Boolean) && Object.values(c.fluidos).every(Boolean);
+  const listo = c.frenos && c.luces && c.humo && c.documentacion && (c.tipo === "Máquina" || c.vtv) && Object.values(c.kit).every(Boolean) && Object.values(c.fluidos).every(Boolean);
   const falta = Object.values(c.kit).includes("Falta"), bloq = dictaminar(c).bloqueante;
   $("#c-aut").hidden = !(falta && !bloq && c.movimiento === "Salida a uso");
   if (bloq || listo) pintar(dictaminar(c)); else $("#c-dict").innerHTML = "";
+  const noApto = (bloq || listo) && dictaminar(c).resultado === "NO APTO";
+  $("#c-fotos").classList.toggle("req", noApto); $("#c-fotosreq").textContent = noApto ? "NO APTO: obligatoria al menos una (ej.: fusiblera quemada, daño del choque)" : "(opcionales; si da NO APTO, al menos una)";
 }
 F.tipo.onchange = () => { kit(); actualizar(); }; F.oninput = actualizar; F.onchange = actualizar;
 F.onsubmit = async (e) => {
-  e.preventDefault(); const c = datos(), err = validarChequeo(c);
+  e.preventDefault(); const c = datos(), err = [...validarChequeo(c), ...(validarChequeo(c).length ? [] : validarFotosChequeo(c, dictaminar(c)))];
   $("#c-err").textContent = err.join(" · "); if (err.length) return $("#c-err").scrollIntoView({ behavior: "smooth" });
   $("#c-enviar").disabled = true; const [s, r] = await api("/api/chequeos", c).finally(() => ($("#c-enviar").disabled = false));
-  if (s === 201) { pintar(r.dictamen, r); esperar(r); F.legajo.value = F.dni.value = ""; $("#c-dict").scrollIntoView({ behavior: "smooth" }); } else $("#c-err").textContent = errores(r);
+  if (s === 201) { pintar(r.dictamen, r); esperar(r); F.legajo.value = F.dni.value = ""; limpiarFotosCh(); $("#c-dict").scrollIntoView({ behavior: "smooth" }); } else $("#c-err").textContent = errores(r);
 };
+// fotos del chequeo (hasta 4): se achican en el teléfono como en Ingreso
+const fotosCh = {};
+$("#c-fotoslist").innerHTML = Array.from({ length: FOTOS_CHEQUEO_MAX }, (_, n) => `<div class="foto fch" data-k="f${n + 1}"><span>Foto ${n + 1}</span><img hidden alt=""><input type="file" accept="image/*" capture="environment"></div>`).join("");
+document.querySelectorAll(".fch input").forEach((x) => (x.onchange = async () => { const d = x.closest(".foto"); if (!x.files[0]) return;
+  fotosCh[d.dataset.k] = await achicar(x.files[0]); const im = d.querySelector("img"); im.src = fotosCh[d.dataset.k]; im.hidden = false; actualizar(); }));
+function limpiarFotosCh() { for (const k in fotosCh) delete fotosCh[k]; document.querySelectorAll(".fch").forEach((d) => { d.querySelector("img").hidden = true; d.querySelector("input").value = ""; }); }
 // ---------- Ingreso a mantenimiento ----------
 const fh = (d) => new Date(d).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hourCycle: "h23", dateStyle: "short", timeStyle: "short" }) + " (hora Arg.)";
 const T = $("#t-f");
@@ -126,14 +134,14 @@ const fotos = {};
 // reduce la foto en el teléfono (máx. 1280 px, JPEG) antes de subirla
 const achicar = (f) => new Promise((ok) => { const i = new Image(); i.onload = () => { const k = Math.min(1, 1280 / Math.max(i.width, i.height)), cv = document.createElement("canvas");
   cv.width = i.width * k; cv.height = i.height * k; cv.getContext("2d").drawImage(i, 0, 0, cv.width, cv.height); ok(cv.toDataURL("image/jpeg", 0.7)); }; i.src = URL.createObjectURL(f); });
-document.querySelectorAll(".foto input").forEach((x) => (x.onchange = async () => { const d = x.closest(".foto"); if (!x.files[0]) return;
+document.querySelectorAll(".foto:not(.fch) input").forEach((x) => (x.onchange = async () => { const d = x.closest(".foto"); if (!x.files[0]) return;
   fotos[d.dataset.k] = await achicar(x.files[0]); const im = d.querySelector("img"); im.src = fotos[d.dataset.k]; im.hidden = false; }));
 let ultimo = null;
 const leerIngreso = () => { const v = T.vehiculo.value; return { vehiculoId: v && v !== OTRA ? +v : null, unidad: v === OTRA ? T.unidad.value.trim() : "", causa: T.causa.value, sistema: T.sistema.value,
   relato: T.relato.value.trim(), declaro: T.declaro.value.trim(), llegada: T.llegada.value, medida: T.medida.value === "" ? "" : Number(T.medida.value), prioridad: T.prioridad.value,
   guardiaId: +T.guardia.value || null, legajo: T.legajo.value.trim(), dni: T.dni.value.trim(), fotos }; };
 T.onchange = async (e) => { $("#t-otra").hidden = T.vehiculo.value !== OTRA;
-  const req = fotosExigidas(completar ? completar.causa : T.causa.value); document.querySelectorAll(".foto").forEach((d) => d.classList.toggle("req", req.includes(d.dataset.k)));
+  const req = fotosExigidas(completar ? completar.causa : T.causa.value); document.querySelectorAll(".foto:not(.fch)").forEach((d) => d.classList.toggle("req", req.includes(d.dataset.k)));
   if (e?.target?.name === "vehiculo" || e?.target?.name === "unidad") { const i = leerIngreso(); const [s, r] = await api(`/api/ultima-medida?vehiculoId=${i.vehiculoId || ""}&unidad=${encodeURIComponent(i.unidad)}`);
     ultimo = s === 200 ? r.medida : null; $("#t-ultimo").textContent = ultimo != null ? `Último registro: ${ultimo}. No puede ser menor.` : ""; } };
 let completar = null; // pedido creado por NO APTO en portón: el guardia completa solo las fotos
@@ -147,7 +155,7 @@ function modo(d) {
   $("#t-datos").hidden = !!completar; $("#t-modo").hidden = !completar;
   $("#t-modo").innerHTML = completar ? `Completando fotos de <b>${esc(completar.numero)}</b>. <a href="#taller" id="t-cancel">Cancelar</a>` : "";
   T.querySelector(".prim").textContent = completar ? "Subir fotos del pedido" : "Dar OK de llegada y declarar ingreso";
-  document.querySelectorAll(".foto").forEach((x) => x.classList.toggle("req", fotosExigidas(completar ? completar.causa : T.causa.value).includes(x.dataset.k)));
+  document.querySelectorAll(".foto:not(.fch)").forEach((x) => x.classList.toggle("req", fotosExigidas(completar ? completar.causa : T.causa.value).includes(x.dataset.k)));
   if (completar) { $("#t-cancel").onclick = (e) => { e.preventDefault(); modo(null); }; T.scrollIntoView(); }
 }
 T.onsubmit = async (e) => {

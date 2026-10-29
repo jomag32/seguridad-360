@@ -27,7 +27,8 @@ const n = (v) => (Array.isArray(v) ? v[1] : "");
 const id = (v) => (Array.isArray(v) ? v[0] : null);
 const kitTexto = (k) => Object.entries(k || {}).map(([a, b]) => `${a}: ${b}`).join("\n");
 const kitObj = (t) => Object.fromEntries(String(t || "").split("\n").filter(Boolean).map((l) => l.split(": ")));
-const CH_F = ["x_name", "x_fecha_hora", "x_movimiento", "x_guardia_id", "x_vehiculo_id", "x_unidad_texto", "x_tipo", "x_porton_id", "x_km_horas", "x_frenos", "x_luces",
+const FOTOS_CH = ["x_foto_1", "x_foto_2", "x_foto_3", "x_foto_4"];
+const CH_F = ["x_name", "x_fecha_hora", "x_movimiento", "x_guardia_id", "x_vehiculo_id", "x_unidad_texto", "x_tipo", "x_porton_id", "x_km_horas", "x_frenos", "x_luces", "x_humo", "x_fotos_cant",
   "x_kit", "x_vtv_vigente", "x_documentacion", "x_dictamen", "x_motivos", "x_bloqueante", "x_estado", "x_aut_salida_por_id", "x_aut_salida_motivo", "x_aut_salida_fecha", "x_observaciones", "x_firma_verificada", ...Object.values(FL), "x_gravedad", "x_obs_falla", "x_ingreso_previsto", "x_obs_logistica", "x_ingreso_id"];
 const LL_F = ["x_name", "x_fecha_hora", "x_vehiculo_id", "x_unidad_texto", "x_color", "x_restr_ruta", "x_restr_60", "x_restr_agua_aceite", "x_restr_otra",
   "x_entrego", "x_guardia_id", "x_observaciones", "x_create_date", "create_date", "x_firma_verificada"];
@@ -42,7 +43,7 @@ export function crearDatos(ejecutar) {
   const sr = (m, dom, fields, kw = {}) => ejecutar(m, "search_read", [dom], { fields, ...kw });
   const mapCh = (r) => ({ id: r.id, numero: r.x_name, fecha: deOdoo(r.x_fecha_hora), movimiento: r.x_movimiento === "salida" ? "Salida a uso" : "Retorno de uso",
     guardia: n(r.x_guardia_id), unidad: n(r.x_vehiculo_id) || r.x_unidad_texto || "", vehiculoId: id(r.x_vehiculo_id), tipo: TIPO_INV[r.x_tipo] || r.x_tipo,
-    acceso: n(r.x_porton_id), medida: r.x_km_horas, frenos: r.x_frenos === "ok" ? "OK" : "NO", luces: r.x_luces === "ok" ? "OK" : "NO", kit: kitObj(r.x_kit), vtv: { si: "Sí", no: "No", na: "No aplica" }[r.x_vtv_vigente] || "", documentacion: { si: "Sí", no: "No" }[r.x_documentacion] || "",
+    acceso: n(r.x_porton_id), medida: r.x_km_horas, frenos: r.x_frenos === "ok" ? "OK" : "NO", luces: r.x_luces === "ok" ? "OK" : "NO", humo: { si: "Sí", no: "No" }[r.x_humo] || "", fotos: r.x_fotos_cant || 0, kit: kitObj(r.x_kit), vtv: { si: "Sí", no: "No", na: "No aplica" }[r.x_vtv_vigente] || "", documentacion: { si: "Sí", no: "No" }[r.x_documentacion] || "",
     dictamen: { resultado: DICT_INV[r.x_dictamen] || "NO APTO", bloqueante: !!r.x_bloqueante, motivos: r.x_motivos ? r.x_motivos.split(" | ") : [] },
     estado: r.x_estado, estadoTexto: ESTADO[r.x_estado] || r.x_estado, firmaVerificada: !!r.x_firma_verificada,
     autorizacion: r.x_estado === "salida_autorizada" ? { por: n(r.x_aut_salida_por_id), motivo: r.x_aut_salida_motivo || "", fecha: deOdoo(r.x_aut_salida_fecha) } : null,
@@ -76,10 +77,13 @@ export function crearDatos(ejecutar) {
       // NO APTO en portón → primero el Ingreso a mantenimiento (causa «No apto en portón»), así el chequeo nace ya ligado:
       // el usuario de servicio no tiene permiso de escritura sobre x_seg360_chequeo (registro inmutable); el vínculo inverso se escribe en el pedido.
       const ing = d.resultado === "NO APTO" ? await this.crearIngreso({ vehiculoId: c.vehiculoId, unidad: c.unidad, causa: "No apto en portón", sistema: sistemaDe(d.motivos), relato: d.motivos.join(" · "),
-        declaro: "Guardia (chequeo en portón)", llegada: "Por sus medios", guardiaId: c.guardiaId, medida: c.medida, prioridad: d.bloqueante ? "3" : "1", fotos: {} }, g, ahora, false) : null;
+        declaro: "Guardia (chequeo en portón)", llegada: "Por sus medios", guardiaId: c.guardiaId, medida: c.medida, prioridad: d.bloqueante ? "3" : "1",
+        fotos: Object.fromEntries((c.fotos || []).map((x, n) => [`chequeo-${n + 1}`, x])), fotosPendientes: !(c.fotos || []).length }, g, ahora, false) : null;
       const nuevo = await ejecutar("x_seg360_chequeo", "create", [{ x_name: "/", x_fecha_hora: aOdoo(ahora), x_movimiento: c.movimiento === "Salida a uso" ? "salida" : "retorno",
         x_guardia_id: +c.guardiaId, x_vehiculo_id: c.vehiculoId ? +c.vehiculoId : false, x_unidad_texto: c.vehiculoId ? false : c.unidad.trim(), x_tipo: TIPO[c.tipo],
-        x_porton_id: +c.portonId, x_km_horas: Number(c.medida), x_frenos: c.frenos === "OK" ? "ok" : "no", x_luces: c.luces === "OK" ? "ok" : "no", x_kit: kitTexto(c.kit), x_vtv_vigente: c.tipo === "Máquina" ? "na" : c.vtv === "Sí" ? "si" : "no", x_documentacion: c.documentacion === "Sí" ? "si" : "no",
+        x_porton_id: +c.portonId, x_km_horas: Number(c.medida), x_frenos: c.frenos === "OK" ? "ok" : "no", x_luces: c.luces === "OK" ? "ok" : "no", x_humo: c.humo === "Sí" ? "si" : "no",
+        // fotos en campos binarios del propio chequeo: Odoo crea el adjunto con sudo al crear el registro (no hace falta permiso de escritura)
+        x_fotos_cant: (c.fotos || []).length, ...Object.fromEntries((c.fotos || []).map((d, n) => [FOTOS_CH[n], d.split(",")[1]])), x_kit: kitTexto(c.kit), x_vtv_vigente: c.tipo === "Máquina" ? "na" : c.vtv === "Sí" ? "si" : "no", x_documentacion: c.documentacion === "Sí" ? "si" : "no",
         x_dictamen: DICT[d.resultado] || "no_apto", x_motivos: d.motivos.join(" | "), x_bloqueante: !!d.bloqueante, x_observaciones: (c.observaciones || "").trim(),
         x_firma_legajo: g.x_legajo, x_firma_verificada: true, x_firma_fecha: aOdoo(ahora), x_clave_envio: c.claveEnvio || false, ...(ing ? { x_ingreso_id: ing.id } : {}),
         ...Object.fromEntries(Object.entries(FL).map(([k, f]) => [f, c.movimiento === "Salida a uso" ? NIVEL[(c.fluidos || {})[k]] || false : false])),
@@ -107,7 +111,7 @@ export function crearDatos(ejecutar) {
         x_causa: CAUSA[i.causa], x_sistema: SIST[i.sistema], description: i.relato.trim(), x_declaro: i.declaro.trim(), x_llegada: LLEG[i.llegada], x_guardia_id: +i.guardiaId,
         x_ok_guardia_fecha: aOdoo(ahora), x_km_horas_llegada: Number(i.medida), priority: i.prioridad, x_validacion: "pendiente", x_chequeo_id: chequeoId,
         x_firma_legajo: g.x_legajo, x_firma_verificada: true, ...(st ? { stage_id: st.id } : {}),
-        x_fotos_pendientes: fotosExigidas(i.causa).some((k) => !(i.fotos || {})[k]) }]);
+        x_fotos_pendientes: i.fotosPendientes ?? fotosExigidas(i.causa).some((k) => !(i.fotos || {})[k]) }]);
       await this._fotos(nuevo, i.fotos);
       return this.ingreso(nuevo);
     },

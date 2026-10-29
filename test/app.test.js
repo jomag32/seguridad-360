@@ -6,7 +6,7 @@ test.after(() => { srv.closeAllConnections(); srv.close(); });
 const h = { "x-access-key": "prueba7", "content-type": "application/json" };
 const post = async (u, b) => { const r = await fetch(base + u, { method: "POST", headers: h, body: JSON.stringify(b) }); return [r.status, await r.json()]; };
 const get = async (u) => { const r = await fetch(base + u, { headers: h }); return [r.status, await r.json()]; };
-const chq = { movimiento: "Salida a uso", guardiaId: 1, legajo: "l-10", dni: "20111222", vehiculoId: 5, tipo: "Liviano", portonId: 2, medida: 1200, frenos: "OK", luces: "OK",
+const chq = { movimiento: "Salida a uso", guardiaId: 1, legajo: "l-10", dni: "20111222", vehiculoId: 5, tipo: "Liviano", portonId: 2, medida: 1200, frenos: "OK", luces: "OK", humo: "No", fotos: { f1: "data:image/jpeg;base64,AAAA" },
   vtv: "Sí", documentacion: "Sí", kit: { Matafuego: "Está", Balizas: "Está", Gato: "Está", "Llave de rueda": "Está" },
   fluidos: { frenos: "Medio", refrigerante: "Máximo", aceite: "Mínimo" } };
 test("healthz sin clave; API sin clave o con clave mala → 401", async () => {
@@ -102,8 +102,9 @@ test("ingreso declarado: km menor al último → 422; faltan fotos → 422; ok �
   [s2, v] = await post(`/api/ingresos/${r.id}/validacion`, { valida: false, por: "Logística 1", motivo: "No se verifica la falla" }); assert.equal(v.validacion, "rechazada"); assert.equal(v.declaro, "Chofer A");
   assert.deepEqual(validarIngreso({ ...i, causa: "" }).some((e) => /causa/.test(e)), true);
 });
-test("NO APTO auto → fotos pendientes; el guardia las completa; valida exige ubicación; ubicación editable; CSV ingresos", async () => {
+test("NO APTO auto (pedido viejo sin fotos) → fotos pendientes; el guardia las completa; valida exige ubicación; ubicación editable; CSV ingresos", async () => {
   const [, r] = await post("/api/chequeos", { ...chq, movimiento: "Retorno de uso", vehiculoId: 5, luces: "NO", medida: 1500 });
+  o.db["maintenance.request"].find((x) => x.id === r.ingresoId).x_fotos_pendientes = true; // como un pedido creado antes de las fotos en portón
   const [, pend] = await get("/api/ingresos/fotos-pendientes"); assert.ok(pend.some((x) => x.id === r.ingresoId));
   let [s, e] = await post(`/api/ingresos/${r.ingresoId}/fotos`, { fotos: { tablero: png }, guardiaId: 1, legajo: "L-10", dni: "20111222" }); assert.equal(s, 422); assert.match(e.errores[0], /Zona/);
   [s, e] = await post(`/api/ingresos/${r.ingresoId}/fotos`, { fotos: { tablero: png, zona: png }, guardiaId: 1, legajo: "L-10", dni: "20111222" }); assert.equal(s, 200); assert.equal(e.fotosPendientes, false);
@@ -116,4 +117,20 @@ test("NO APTO auto → fotos pendientes; el guardia las completa; valida exige u
 test("plazos: lee ir.config_parameter seg360.plazo.* y si falla usa los valores del documento", async () => {
   const p = await crearDatos(o.ejecutar).plazos(); assert.equal(p.Media.Liviano, 60); assert.equal(p.Alta.Pesado, 24);
   const q = await crearDatos(async () => { throw new Error("sin permiso"); }).plazos(); assert.equal(q.Media.Liviano, 72);
+});
+test("fotos del chequeo: opcionales; NO APTO exige al menos una; van al chequeo (campo binario, sin escribir) y al ingreso, que no queda con fotos pendientes", async () => {
+  const sinFoto = { ...chq, vehiculoId: null, unidad: "FOT-01" }; delete sinFoto.fotos;
+  let [s, r] = await post("/api/chequeos", sinFoto); assert.equal(s, 201); assert.equal(r.fotos, 0);
+  [s, r] = await post("/api/chequeos", { ...sinFoto, unidad: "FOT-02", movimiento: "Retorno de uso", luces: "NO" }); assert.equal(s, 422); assert.match(r.errores[0], /al menos una foto/);
+  [s, r] = await post("/api/chequeos", { ...sinFoto, unidad: "FOT-02", movimiento: "Retorno de uso", luces: "NO", fotos: { a: png, b: png } }); assert.equal(s, 201);
+  assert.equal(r.fotos, 2); assert.ok(r.ingresoId);
+  assert.equal(o.db["ir.attachment"].filter((a) => a.res_model === "x_seg360_chequeo" && a.res_id === r.id && a.res_field).length, 2);
+  assert.equal(o.db["ir.attachment"].filter((a) => a.res_model === "maintenance.request" && a.res_id === r.ingresoId).length, 2);
+  assert.equal(o.db["maintenance.request"].find((x) => x.id === r.ingresoId).x_fotos_pendientes, false);
+});
+test("Emite humo: obligatorio marcarlo; Sí → NO APTO bloqueante (no autorizable)", async () => {
+  let [s, r] = await post("/api/chequeos", { ...chq, vehiculoId: null, unidad: "HUM-01", humo: "" }); assert.equal(s, 422); assert.match(r.errores.join(), /humo/);
+  [s, r] = await post("/api/chequeos", { ...chq, vehiculoId: null, unidad: "HUM-01", humo: "Sí" }); assert.equal(s, 201);
+  assert.equal(r.dictamen.resultado, "NO APTO"); assert.equal(r.dictamen.bloqueante, true); assert.match(r.dictamen.motivos.join(), /Emite humo/); assert.equal(r.humo, "Sí");
+  const csv = await (await fetch(base + "/api/export/chequeos.csv", { headers: h })).text(); assert.match(csv, /emite_humo/);
 });

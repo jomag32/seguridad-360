@@ -22,6 +22,7 @@ export function dictaminar(c) {
   const motivos = [];
   if (c.frenos !== "OK") motivos.push("Frenos NO");
   if (c.luces !== "OK") motivos.push("Luces NO");
+  if (c.humo === "Sí") motivos.push("Emite humo"); // riesgo de incendio: bloqueante como frenos y luces
   if (c.tipo !== "Máquina" && c.vtv !== "Sí") motivos.push("VTV / RTO no vigente");
   if (c.documentacion !== "Sí") motivos.push("Documentación incompleta (cédula, seguro, VTV)");
   if (c.movimiento === "Salida a uso") FLUIDOS.forEach(([k, t]) => { if ((c.fluidos || {})[k] === "Bajo el mínimo") motivos.push(t + " bajo el mínimo"); });
@@ -84,6 +85,7 @@ export function validarChequeo(c) {
   if (!c?.portonId) e.push("Elegí el portón");
   if (c?.medida === "" || c?.medida == null || !(Number(c.medida) >= 0)) e.push("Cargá km u horas");
   if (!c?.frenos || !c?.luces) e.push("Marcá frenos y luces");
+  if (!["Sí", "No"].includes(c?.humo)) e.push("Marcá si la unidad emite humo");
   if (c?.tipo !== "Máquina" && !["Sí", "No"].includes(c?.vtv)) e.push("Marcá si la VTV / RTO está vigente");
   if (!["Sí", "No"].includes(c?.documentacion)) e.push("Marcá si la documentación está completa");
   if (Object.values(c?.kit || {}).some((v) => !v) || (KIT[c?.tipo] || []).some((i) => !(c.kit || {})[i])) e.push("Marcá todo el kit (Está / Falta)");
@@ -117,6 +119,12 @@ export const SISTEMAS = ["Frenos", "Luces / eléctrico", "Motor", "Caja / transm
 export const LLEGADAS = ["Por sus medios", "Remolcada", "En grúa o carretón", "Quedó en la calle: la trae Logística"];
 export const UBICACIONES = ["Taller propio", "Playa en espera", "En proveedor", "Varada en obra o ruta"]; // «En proveedor»: lógica en etapa 2
 export const PRIORIDADES = [["Crítica (no sale)", "3"], ["Alta", "2"], ["Media", "1"], ["Baja", "0"]]; // estrellas de maintenance.request
+// Fotos del chequeo de portón: opcionales; con dictamen NO APTO, al menos una (ej.: fusiblera quemada, choque).
+export const FOTOS_CHEQUEO_MAX = 4;
+export const fotosChequeo = (c) => Object.values(c?.fotos || {}).filter((d) => /^data:image\/[a-z]+;base64,/.test(d || "")).slice(0, FOTOS_CHEQUEO_MAX);
+export function validarFotosChequeo(c, d) {
+  return d?.resultado === "NO APTO" && !fotosChequeo(c).length ? ["NO APTO: sacá al menos una foto de la falla (se adjunta al chequeo y al ingreso a mantenimiento)"] : [];
+}
 export const FOTOS = [["tablero", "Tablero: km y testigos encendidos"], ["zona", "Zona de la falla"], ["frente", "Lado frente"], ["atras", "Lado atrás"], ["izq", "Lado izquierdo"], ["der", "Lado derecho"]];
 export const fotosExigidas = (causa) => ["tablero", "zona", ...(causa === "Daño o accidente" ? ["frente", "atras", "izq", "der"] : [])];
 /** i = {vehiculoId|unidad, causa, sistema, relato, llegada, guardiaId, legajo, dni, medida, prioridad, fotos:{clave:dataURL}}; ultimo = último km/horas registrado */
