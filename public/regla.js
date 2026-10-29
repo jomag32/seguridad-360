@@ -28,7 +28,9 @@ export function dictaminar(c) {
   if (motivos.length) return { resultado: "NO APTO", bloqueante: true, motivos, texto: "La unidad no sale. No se puede autorizar (ni el Jefe de Logística)" };
   const items = KIT[c.tipo] || [];
   const faltan = items.filter((i) => (c.kit || {})[i] !== "Está");
-  if (!faltan.length) return { resultado: "APTO", bloqueante: false, motivos: [], texto: "Puede salir" };
+  if (!faltan.length) return c.movimiento === "Salida a uso" && c.estadoLogistica === "Apto con observación"
+    ? { resultado: "APTO CON OBSERVACIÓN", bloqueante: false, motivos: [`Gravedad ${c.gravedad}: ${c.observacionFalla}`, `Ingreso previsto ${c.ingresoPrevisto}`], texto: "Puede salir con observación. Tiene que ingresar a mantenimiento antes de la fecha prevista" }
+    : { resultado: "APTO", bloqueante: false, motivos: [], texto: "Puede salir" };
   const m = faltan.map((i) => "Falta " + i);
   // Sin autorización en la garita: la excepción la firma SOLO el Jefe de Logística en Odoo («Autorizar salida»).
   if (c.movimiento === "Salida a uso")
@@ -86,8 +88,58 @@ export function validarChequeo(c) {
   if (!["Sí", "No"].includes(c?.documentacion)) e.push("Marcá si la documentación está completa");
   if (Object.values(c?.kit || {}).some((v) => !v) || (KIT[c?.tipo] || []).some((i) => !(c.kit || {})[i])) e.push("Marcá todo el kit (Está / Falta)");
   if (c?.movimiento === "Salida a uso" && FLUIDOS.some(([k]) => !NIVELES.includes((c.fluidos || {})[k]))) e.push("Marcá el nivel de los 3 fluidos (frenos, refrigerante, aceite)");
+  if (c?.movimiento === "Salida a uso" && c?.estadoLogistica === "Apto con observación") {
+    if (!GRAVEDADES.includes(c.gravedad)) e.push("Apto con observación: elegí la gravedad de la falla");
+    if (!c.observacionFalla?.trim()) e.push("Apto con observación: escribí la observación");
+    if (!/^\d{4}-\d\d-\d\d$/.test(c.ingresoPrevisto || "")) e.push("Apto con observación: falta la fecha de ingreso previsto");
+    if (!c.logistica?.trim()) e.push("Apto con observación: falta quién de Logística lo fijó");
+  }
   if (!c?.legajo?.trim() || !c?.dni?.trim()) e.push("Firma: cargá legajo y DNI del guardia");
   return e;
 }
 export const soloDigitos = (s) => String(s ?? "").replace(/\D/g, "");
 export const normLegajo = (s) => String(s ?? "").trim().toUpperCase().replace(/\s+/g, "");
+
+// ---------- Etapa 1 · Playa disponible: Apto con observación (fuente: Control Flota 360°) ----------
+export const ESTADOS_LOGISTICA = ["Apto", "Apto con observación"];
+export const GRAVEDADES = ["Alta", "Media", "Baja"];
+// PARÁMETROS EDITABLES (valores iniciales del documento, «para validar con el área»). En Odoo: ir.config_parameter seg360.plazo.<gravedad>.<tipo> (horas).
+// Baja = «próximo service programado»: sin plazo automático, Logística carga la fecha.
+export const PLAZOS_H = { Alta: { Liviano: 24, Pesado: 24, "Máquina": 24, Semirremolque: 24 }, Media: { Liviano: 72, Pesado: 48, "Máquina": 48, Semirremolque: 48 }, Baja: null };
+/** fecha límite (AAAA-MM-DD, hora Argentina) = hoy + plazo según gravedad y tipo; null si no hay plazo automático. */
+export function ingresoPrevisto(gravedad, tipo, hoy = new Date(), plazos = PLAZOS_H) {
+  const h = plazos?.[gravedad]?.[tipo]; if (!h) return null;
+  return new Date(hoy.getTime() - 3 * 3600e3 + h * 3600e3).toISOString().slice(0, 10);
+}
+// ---------- Etapa 1 · Ingreso a mantenimiento ----------
+export const CAUSAS = ["Falla en uso", "No apto en portón", "Ingreso previsto vencido", "Daño o accidente", "Service por km u horas", "Vencimiento documental"];
+export const SISTEMAS = ["Frenos", "Luces / eléctrico", "Motor", "Caja / transmisión", "Dirección / suspensión", "Neumáticos", "Refrigeración", "Hidráulico", "Carrocería", "Climatización", "Kit obligatorio", "Documentación", "Service preventivo", "Otro"];
+export const LLEGADAS = ["Por sus medios", "Remolcada", "En grúa o carretón", "Quedó en la calle: la trae Logística"];
+export const PRIORIDADES = [["Crítica (no sale)", "3"], ["Alta", "2"], ["Media", "1"], ["Baja", "0"]]; // estrellas de maintenance.request
+export const FOTOS = [["tablero", "Tablero: km y testigos encendidos"], ["zona", "Zona de la falla"], ["frente", "Lado frente"], ["atras", "Lado atrás"], ["izq", "Lado izquierdo"], ["der", "Lado derecho"]];
+export const fotosExigidas = (causa) => ["tablero", "zona", ...(causa === "Daño o accidente" ? ["frente", "atras", "izq", "der"] : [])];
+/** i = {vehiculoId|unidad, causa, sistema, relato, llegada, guardiaId, legajo, dni, medida, prioridad, fotos:{clave:dataURL}}; ultimo = último km/horas registrado */
+export function validarIngreso(i, ultimo = null) {
+  const e = [];
+  if (!i?.vehiculoId && !i?.unidad?.trim()) e.push("Elegí la unidad");
+  if (!CAUSAS.includes(i?.causa)) e.push("Sin causa declarada no hay ingreso: elegí la causa");
+  if (!SISTEMAS.includes(i?.sistema)) e.push("Elegí el sistema afectado");
+  if (!i?.relato?.trim()) e.push("Falta el relato del chofer u operador");
+  if (!i?.declaro?.trim()) e.push("Falta quién declaró la causa (chofer u operador)");
+  if (!LLEGADAS.includes(i?.llegada)) e.push("Elegí cómo llega la unidad");
+  if (!i?.guardiaId) e.push("Elegí el guardia que da el OK de llegada");
+  if (i?.medida === "" || i?.medida == null || !(Number(i.medida) >= 0)) e.push("Cargá km u horas de llegada");
+  else if (ultimo != null && Number(i.medida) < Number(ultimo)) e.push(`Km/horas de llegada (${i.medida}) menor que el último registro (${ultimo})`);
+  if (!PRIORIDADES.some(([, v]) => v === i?.prioridad)) e.push("Elegí la gravedad (estrellas)");
+  const f = i?.fotos || {}; const faltan = fotosExigidas(i?.causa).filter((k) => !/^data:image\//.test(f[k] || ""));
+  if (faltan.length) e.push("Faltan fotos: " + faltan.map((k) => FOTOS.find(([x]) => x === k)[1]).join(", "));
+  if (!i?.legajo?.trim() || !i?.dni?.trim()) e.push("Firma: cargá legajo y DNI del guardia");
+  return e;
+}
+export function validarValidacion(v) {
+  const e = [];
+  if (typeof v?.valida !== "boolean") e.push("Elegí: valida la causa o no valida");
+  if (!v?.por?.trim()) e.push("Falta quién de Logística valida");
+  if (v?.valida === false && !v?.motivo?.trim()) e.push("No valida: escribí el motivo");
+  return e;
+}

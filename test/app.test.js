@@ -73,3 +73,32 @@ test("salida: falta nivel de fluidos → 422; fluido bajo el mínimo → NO APTO
   const [s3, r3] = await post("/api/chequeos", { ...chq, movimiento: "Retorno de uso", vehiculoId: null, unidad: "FL-003", fluidos: undefined });
   assert.equal(s3, 201); assert.deepEqual(r3.fluidos, {});
 });
+// ---------- Etapa 1 ----------
+import { ingresoPrevisto, validarIngreso } from "../public/regla.js";
+const png = "data:image/jpeg;base64,AAAA";
+test("ingreso previsto = hoy + plazo según gravedad y tipo (Baja sin plazo)", () => {
+  const hoy = new Date("2026-10-29T15:00:00Z");
+  assert.equal(ingresoPrevisto("Alta", "Liviano", hoy), "2026-10-30"); assert.equal(ingresoPrevisto("Media", "Liviano", hoy), "2026-11-01");
+  assert.equal(ingresoPrevisto("Media", "Pesado", hoy), "2026-10-31"); assert.equal(ingresoPrevisto("Baja", "Pesado", hoy), null);
+});
+test("Apto con observación: exige gravedad/observación/fecha; sale habilitada", async () => {
+  const [s1, r1] = await post("/api/chequeos", { ...chq, vehiculoId: null, unidad: "OBS-01", estadoLogistica: "Apto con observación" }); assert.equal(s1, 422); assert.match(r1.errores.join(), /gravedad/);
+  const [s, r] = await post("/api/chequeos", { ...chq, vehiculoId: null, unidad: "OBS-01", estadoLogistica: "Apto con observación", gravedad: "Media", observacionFalla: "Ruido en caja", ingresoPrevisto: "2026-11-01", logistica: "Logística" });
+  assert.equal(s, 201); assert.equal(r.dictamen.resultado, "APTO CON OBSERVACIÓN"); assert.equal(r.estado, "habilitada"); assert.equal(r.conObservacion.gravedad, "Media");
+  assert.equal(o.db.x_seg360_chequeo.at(-1).x_dictamen, "apto_obs");
+});
+test("NO APTO en portón crea pedido de mantenimiento a validar, ligado al equipo", async () => {
+  const [, r] = await post("/api/chequeos", { ...chq, movimiento: "Retorno de uso", vehiculoId: 5, frenos: "NO" }); assert.ok(r.ingresoId);
+  const m = o.db["maintenance.request"].find((x) => x.id === r.ingresoId); assert.equal(m.x_causa, "no_apto_en_porton"); assert.equal(m.equipment_id, 40); assert.equal(m.priority, "3"); assert.equal(m.stage_id, 9);
+});
+test("ingreso declarado: km menor al último → 422; faltan fotos → 422; ok → pendiente; valida → A iniciar con reloj; rechazo → registra quién declaró", async () => {
+  const i = { vehiculoId: 5, causa: "Daño o accidente", sistema: "Carrocería", relato: "Golpe lateral", declaro: "Chofer A", llegada: "En grúa o carretón", guardiaId: 1, legajo: "L-10", dni: "20111222", medida: 10, prioridad: "2", fotos: { tablero: png, zona: png } };
+  let [s, r] = await post("/api/ingresos", i); assert.equal(s, 422); assert.match(r.errores.join(), /menor que el último/); assert.match(r.errores.join(), /Faltan fotos/);
+  [s, r] = await post("/api/ingresos", { ...i, medida: 1300, fotos: { tablero: png, zona: png, frente: png, atras: png, izq: png, der: png } }); assert.equal(s, 201);
+  assert.equal(r.validacion, "pendiente"); assert.equal(o.db["ir.attachment"].filter((a) => a.res_id === r.id).length, 6);
+  let [s2, v] = await post(`/api/ingresos/${r.id}/validacion`, { valida: true, por: "Logística 1" }); assert.equal(s2, 200); assert.equal(v.etapa, "A iniciar"); assert.ok(v.ingresoFecha);
+  [s2] = await post(`/api/ingresos/${r.id}/validacion`, { valida: false, por: "x", motivo: "y" }); assert.equal(s2, 409);
+  [s, r] = await post("/api/ingresos", { ...i, causa: "Falla en uso", medida: 1400 }); 
+  [s2, v] = await post(`/api/ingresos/${r.id}/validacion`, { valida: false, por: "Logística 1", motivo: "No se verifica la falla" }); assert.equal(v.validacion, "rechazada"); assert.equal(v.declaro, "Chofer A");
+  assert.deepEqual(validarIngreso({ ...i, causa: "" }).some((e) => /causa/.test(e)), true);
+});

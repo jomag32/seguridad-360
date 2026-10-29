@@ -1,4 +1,4 @@
-import { TIPOS, KIT, FLUIDOS, NIVELES, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave, validarChequeo } from "./regla.js";
+import { TIPOS, KIT, FLUIDOS, NIVELES, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave, validarChequeo, PLAZOS_H, ingresoPrevisto, CAUSAS, SISTEMAS, LLEGADAS, PRIORIDADES, FOTOS, fotosExigidas, validarIngreso, validarValidacion } from "./regla.js";
 const $ = (s) => document.querySelector(s), esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const opts = (l, sel) => l.map(([v, t]) => `<option value="${v}"${v === sel ? " selected" : ""}>${esc(t)}</option>`).join("");
 let clave = localStorage.getItem("s360-clave") || "";
@@ -14,9 +14,9 @@ const OTRA = "__otra";
 async function cargarCatalogos() {
   const [s, c] = await api("/api/catalogos"); if (s !== 200) return; cat = c;
   const g = `<option value="">— Elegí guardia —</option>` + opts(cat.guardias.map((x) => [String(x.id), `${x.nombre} · ${x.empresa}`]));
-  $("#c-guardia").innerHTML = g; $("#l-guardia").innerHTML = g;
+  $("#c-guardia").innerHTML = g; $("#l-guardia").innerHTML = g; $("#t-guardia").innerHTML = g;
   const u = `<option value="">— Elegí la unidad —</option>` + opts(cat.unidades.map((x) => [String(x.id), x.nombre])) + `<option value="${OTRA}">Otra (escribir)</option>`;
-  $("#c-vehiculo").innerHTML = u; $("#l-vehiculo").innerHTML = u;
+  $("#c-vehiculo").innerHTML = u; $("#l-vehiculo").innerHTML = u; $("#t-vehiculo").innerHTML = u;
   $("#c-porton").innerHTML = `<option value="">— Elegí el portón —</option>` + opts(cat.portones.map((x) => [String(x.id), x.nombre]));
 }
 function mostrarIngreso() { document.querySelectorAll("body section").forEach((x) => (x.hidden = x.id !== "v-ingreso")); document.querySelector("nav").hidden = true; }
@@ -72,12 +72,22 @@ function datos() {
   return { movimiento: F.movimiento.value, guardiaId: +F.guardia.value || null, vehiculoId: v && v !== OTRA ? +v : null, unidad: v === OTRA ? F.unidad.value.trim() : "",
     tipo: t, portonId: +F.porton.value || null, medida: F.medida.value === "" ? "" : Number(F.medida.value), frenos: F.frenos.value, luces: F.luces.value,
     vtv: t === "Máquina" ? "" : F.vtv.value, documentacion: F.documentacion.value, kit: k,
-    fluidos: F.movimiento.value === "Salida a uso" ? Object.fromEntries(FLUIDOS.map(([f]) => [f, F["fl_" + f].value || ""])) : {}, legajo: F.legajo.value.trim(), dni: F.dni.value.trim(), observaciones: F.observaciones.value.trim() };
+    fluidos: F.movimiento.value === "Salida a uso" ? Object.fromEntries(FLUIDOS.map(([f]) => [f, F["fl_" + f].value || ""])) : {}, legajo: F.legajo.value.trim(), dni: F.dni.value.trim(), observaciones: F.observaciones.value.trim(),
+    estadoLogistica: F.movimiento.value === "Salida a uso" ? F.estadoLogistica.value : "Apto", gravedad: F.gravedad.value, observacionFalla: F.observacionFalla.value.trim(), ingresoPrevisto: F.ingresoPrevisto.value, logistica: F.logistica.value.trim() };
+}
+let previstoEditado = false;
+F.ingresoPrevisto.addEventListener("input", () => (previstoEditado = true));
+F.addEventListener("change", (e) => { if (e.target.name === "gravedad" || e.target.name === "tipo") previstoEditado = false; });
+function previsto(c) {
+  const pl = cat.plazos || PLAZOS_H, h = pl[c.gravedad]?.[c.tipo];
+  $("#c-plazo").textContent = !c.gravedad ? "Elegí la gravedad: la fecha se calcula sola (hoy + plazo) y se puede corregir."
+    : h ? `Plazo ${c.gravedad} · ${c.tipo}: ${h} h (parámetro editable en Odoo). Se puede corregir la fecha.` : "Baja: hasta el próximo service programado. Cargá la fecha a mano.";
+  if (!previstoEditado) F.ingresoPrevisto.value = ingresoPrevisto(c.gravedad, c.tipo, new Date(), pl) || "";
 }
 let espera = null;
 function pintar(d, reg) {
   const el = $("#c-dict"), aut = reg?.estado === "salida_autorizada";
-  el.className = "dict " + (d.resultado === "APTO" || aut ? "APTO" : "NO");
+  el.className = "dict " + (d.resultado === "APTO CON OBSERVACIÓN" ? "OBS" : d.resultado === "APTO" || aut ? "APTO" : "NO");
   let estado = "";
   if (reg) estado = aut ? `<b>Salida autorizada por ${esc(reg.autorizacion.por)} – ${esc(reg.autorizacion.motivo)}</b>`
     : reg.estado === "bloqueada" ? `<b>BLOQUEADA: la unidad no sale.</b>${!d.bloqueante && reg.movimiento === "Salida a uso" ? "<small>Esperando autorización del Jefe de Logística en Odoo… (se actualiza sola)</small>" : ""}`
@@ -91,6 +101,7 @@ function esperar(reg) {
 }
 function actualizar() {
   const c = datos(); $("#c-otra").hidden = F.vehiculo.value !== OTRA; $("#c-fluidos").hidden = c.movimiento !== "Salida a uso";
+  $("#c-obs").hidden = c.movimiento !== "Salida a uso"; $("#c-obsdet").hidden = c.estadoLogistica !== "Apto con observación"; if (!$("#c-obsdet").hidden) { previsto(c); c.ingresoPrevisto = F.ingresoPrevisto.value; }
   const listo = c.frenos && c.luces && c.documentacion && (c.tipo === "Máquina" || c.vtv) && Object.values(c.kit).every(Boolean) && Object.values(c.fluidos).every(Boolean);
   const falta = Object.values(c.kit).includes("Falta"), bloq = dictaminar(c).bloqueante;
   $("#c-aut").hidden = !(falta && !bloq && c.movimiento === "Salida a uso");
@@ -103,6 +114,49 @@ F.onsubmit = async (e) => {
   $("#c-enviar").disabled = true; const [s, r] = await api("/api/chequeos", c).finally(() => ($("#c-enviar").disabled = false));
   if (s === 201) { pintar(r.dictamen, r); esperar(r); F.legajo.value = F.dni.value = ""; $("#c-dict").scrollIntoView({ behavior: "smooth" }); } else $("#c-err").textContent = errores(r);
 };
+// ---------- Ingreso a mantenimiento ----------
+const fh = (d) => new Date(d).toLocaleString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", hourCycle: "h23", dateStyle: "short", timeStyle: "short" }) + " (hora Arg.)";
+const T = $("#t-f");
+$("#t-causa").innerHTML = `<option value="">— Elegí la causa —</option>` + opts(CAUSAS.map((x) => [x, x]));
+$("#t-sistema").innerHTML = `<option value="">— Elegí el sistema —</option>` + opts(SISTEMAS.map((x) => [x, x]));
+$("#t-llegada").innerHTML += LLEGADAS.map((x) => `<label><input type="radio" name="llegada" value="${x}">${x}</label>`).join("");
+$("#t-prio").innerHTML += PRIORIDADES.map(([t, v]) => `<label><input type="radio" name="prioridad" value="${v}"><i>${"★".repeat(+v) + "☆".repeat(3 - +v)}</i>${t}</label>`).join("");
+$("#t-fotos").innerHTML += FOTOS.map(([k, t]) => `<div class="foto" data-k="${k}"><span>${t}</span><img hidden alt=""><input type="file" accept="image/*" capture="environment"></div>`).join("");
+const fotos = {};
+// reduce la foto en el teléfono (máx. 1280 px, JPEG) antes de subirla
+const achicar = (f) => new Promise((ok) => { const i = new Image(); i.onload = () => { const k = Math.min(1, 1280 / Math.max(i.width, i.height)), cv = document.createElement("canvas");
+  cv.width = i.width * k; cv.height = i.height * k; cv.getContext("2d").drawImage(i, 0, 0, cv.width, cv.height); ok(cv.toDataURL("image/jpeg", 0.7)); }; i.src = URL.createObjectURL(f); });
+document.querySelectorAll(".foto input").forEach((x) => (x.onchange = async () => { const d = x.closest(".foto"); if (!x.files[0]) return;
+  fotos[d.dataset.k] = await achicar(x.files[0]); const im = d.querySelector("img"); im.src = fotos[d.dataset.k]; im.hidden = false; }));
+let ultimo = null;
+const leerIngreso = () => { const v = T.vehiculo.value; return { vehiculoId: v && v !== OTRA ? +v : null, unidad: v === OTRA ? T.unidad.value.trim() : "", causa: T.causa.value, sistema: T.sistema.value,
+  relato: T.relato.value.trim(), declaro: T.declaro.value.trim(), llegada: T.llegada.value, medida: T.medida.value === "" ? "" : Number(T.medida.value), prioridad: T.prioridad.value,
+  guardiaId: +T.guardia.value || null, legajo: T.legajo.value.trim(), dni: T.dni.value.trim(), fotos }; };
+T.onchange = async (e) => { $("#t-otra").hidden = T.vehiculo.value !== OTRA;
+  const req = fotosExigidas(T.causa.value); document.querySelectorAll(".foto").forEach((d) => d.classList.toggle("req", req.includes(d.dataset.k)));
+  if (e?.target?.name === "vehiculo" || e?.target?.name === "unidad") { const i = leerIngreso(); const [s, r] = await api(`/api/ultima-medida?vehiculoId=${i.vehiculoId || ""}&unidad=${encodeURIComponent(i.unidad)}`);
+    ultimo = s === 200 ? r.medida : null; $("#t-ultimo").textContent = ultimo != null ? `Último registro: ${ultimo}. No puede ser menor.` : ""; } };
+T.onsubmit = async (e) => {
+  e.preventDefault(); const i = leerIngreso(), err = validarIngreso(i, ultimo); $("#t-err").textContent = err.join(" · "); if (err.length) return;
+  const [s, r] = await api("/api/ingresos", i);
+  if (s === 201) { const el = $("#t-res"); el.className = "dict OBS"; el.innerHTML = `<small>Ingreso declarado · ${esc(r.numero)}</small><big>A VALIDAR</big><b>OK del guardia ${esc(r.guardia)} · ${fh(r.okGuardia)}</b><small>Logística tiene que validar la causa (mismo día).</small>`;
+    T.legajo.value = T.dni.value = ""; el.scrollIntoView({ behavior: "smooth" }); } else $("#t-err").textContent = errores(r);
+};
+// ---------- Validación de Logística ----------
+async function logistica() {
+  const [s, l] = await api("/api/ingresos?todos=1"); if (s !== 200) return;
+  $("#v-lista").innerHTML = l.length ? l.map((x) => `<div class="ing ${x.validacion}" data-id="${x.id}"><b>${esc(x.numero)}</b> · ${esc(x.unidad)}${x.equipo ? " · equipo " + esc(x.equipo) : ""}<br>
+    Causa: <b>${esc(x.causa)}</b> · ${esc(x.sistema)} · <i style="color:#f59e0b">${"★".repeat(+x.prioridad)}</i> ${esc(x.gravedad)}<br><small>«${esc(x.relato)}» · declaró ${esc(x.declaro)} · llega ${esc(x.llegada)} · ${x.medida} km/h<br>
+    OK guardia ${esc(x.guardia)} · ${fh(x.okGuardia)} · etapa: ${esc(x.etapa)}</small>
+    ${x.validacion === "pendiente" ? `<label>Motivo (si no valida)<input class="mot"></label><div class="bot"><button class="si">Valida: ingresa</button><button class="no">No valida: a Playa</button></div>`
+    : x.validacion === "valida" ? `<br><b>✔ Validó ${esc(x.validoPor)} · ingresó ${fh(x.ingresoFecha)} · corre el plazo</b>`
+    : `<br><b>✖ No validó ${esc(x.validoPor)}: ${esc(x.motivoRechazo)} · vuelve a Playa disponible (declaró ${esc(x.declaro)})</b>`}</div>`).join("") : "<p>No hay ingresos.</p>";
+  document.querySelectorAll(".ing button").forEach((b) => (b.onclick = async () => {
+    const d = b.closest(".ing"), v = { valida: b.classList.contains("si"), por: $("#v-por").value.trim(), motivo: d.querySelector(".mot").value.trim() };
+    const e = validarValidacion(v); $("#v-err").textContent = e.join(" · "); if (e.length) return;
+    const [s2, r2] = await api(`/api/ingresos/${d.dataset.id}/validacion`, v); if (s2 !== 200) return ($("#v-err").textContent = errores(r2)); logistica();
+  }));
+}
 // ---------- Devolución de llave ----------
 const L = $("#l-f");
 $("#l-checks").innerHTML = RESTRICCIONES.map((r) => `<label class="chk"><input type="checkbox" name="restr" value="${r}">${r}</label>`).join("");
@@ -129,7 +183,7 @@ async function registros() {
   const [, ch] = await api("/api/chequeos"); const [, ll] = await api("/api/llaves"); await cargarSemana();
   $("#r-llave").innerHTML = ll.length ? ll.slice(0, 20).map((l) => `<div class="reg ${l.color}"><b>${l.color}</b> · ${esc(l.unidad)} · entregó ${esc(l.entrego)} · recibió ${esc(l.guardia)}<br>
     <small>${new Date(l.fechaHora).toLocaleString("es-AR")}${l.restricciones.length || l.otra ? " · " + [...l.restricciones, l.otra].filter(Boolean).map(esc).join(", ") : ""}</small></div>`).join("") : "<p>Sin devoluciones.</p>";
-  $("#r-cheq").innerHTML = ch.length ? ch.slice(0, 20).map((c) => `<div class="reg ${c.dictamen.resultado === "APTO" || c.estado === "salida_autorizada" ? "" : "NO"}"><b>${c.dictamen.resultado}</b> · ${esc(c.estadoTexto)} · ${esc(c.numero)} · ${esc(c.movimiento)} · ${esc(c.unidad)} (${esc(c.tipo)}) · ${esc(c.acceso)}<br>
+  $("#r-cheq").innerHTML = ch.length ? ch.slice(0, 20).map((c) => `<div class="reg ${c.dictamen.resultado.startsWith("APTO") || c.estado === "salida_autorizada" ? "" : "NO"}"><b>${c.dictamen.resultado}</b> · ${esc(c.estadoTexto)} · ${esc(c.numero)} · ${esc(c.movimiento)} · ${esc(c.unidad)} (${esc(c.tipo)}) · ${esc(c.acceso)}<br>
     <small>${new Date(c.fecha).toLocaleString("es-AR")} · ${esc(c.guardia)}${c.dictamen.motivos.length ? " · " + c.dictamen.motivos.map(esc).join(", ") : ""}${c.autorizacion ? `<br><b>Salida autorizada por ${esc(c.autorizacion.por)} – ${esc(c.autorizacion.motivo)}</b>` : ""}</small></div>`).join("") : "<p>Sin chequeos.</p>";
   $("#r-guard").innerHTML = semana ? semana.dias.map((d) => `<div class="reg"><b>${d.fecha.split("-").reverse().join("/")}</b><br>${d.guardias.map((g) => `${g.turno}: ${esc(g.nombre)} (${esc(g.empresa)}) · ${g.puesto}`).join("<br>")}</div>`).join("") : "<p>No hay semana cargada.</p>";
 }
@@ -137,9 +191,9 @@ async function registros() {
 function ruta() {
   if (!clave) return mostrarIngreso(); document.querySelector("nav").hidden = false; $("#v-ingreso").hidden = true;
   const v = (location.hash || "#chequeo").slice(1);
-  ["semana", "chequeo", "llave", "registros"].forEach((x) => ($("#v-" + x).hidden = x !== v));
+  ["semana", "chequeo", "taller", "logistica", "llave", "registros"].forEach((x) => ($("#v-" + x).hidden = x !== v));
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("act", a.hash === "#" + v));
-  if (v === "registros") registros();
+  if (v === "registros") registros(); if (v === "logistica") logistica();
 }
 addEventListener("hashchange", ruta);
 $("#i-f").onsubmit = async (e) => {
