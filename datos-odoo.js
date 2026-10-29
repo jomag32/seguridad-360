@@ -73,19 +73,18 @@ export function crearDatos(ejecutar) {
       const r = await sr("x_seg360_chequeo", dom, ["x_name"], { limit: 1, order: "id desc" }); return r[0]?.x_name || null;
     },
     async crearChequeo(c, d, g, ahora = new Date()) {
+      // NO APTO en portón → primero el Ingreso a mantenimiento (causa «No apto en portón»), así el chequeo nace ya ligado:
+      // el usuario de servicio no tiene permiso de escritura sobre x_seg360_chequeo (registro inmutable); el vínculo inverso se escribe en el pedido.
+      const ing = d.resultado === "NO APTO" ? await this.crearIngreso({ vehiculoId: c.vehiculoId, unidad: c.unidad, causa: "No apto en portón", sistema: sistemaDe(d.motivos), relato: d.motivos.join(" · "),
+        declaro: "Guardia (chequeo en portón)", llegada: "Por sus medios", guardiaId: c.guardiaId, medida: c.medida, prioridad: d.bloqueante ? "3" : "1", fotos: {} }, g, ahora, false) : null;
       const nuevo = await ejecutar("x_seg360_chequeo", "create", [{ x_name: "/", x_fecha_hora: aOdoo(ahora), x_movimiento: c.movimiento === "Salida a uso" ? "salida" : "retorno",
         x_guardia_id: +c.guardiaId, x_vehiculo_id: c.vehiculoId ? +c.vehiculoId : false, x_unidad_texto: c.vehiculoId ? false : c.unidad.trim(), x_tipo: TIPO[c.tipo],
         x_porton_id: +c.portonId, x_km_horas: Number(c.medida), x_frenos: c.frenos === "OK" ? "ok" : "no", x_luces: c.luces === "OK" ? "ok" : "no", x_kit: kitTexto(c.kit), x_vtv_vigente: c.tipo === "Máquina" ? "na" : c.vtv === "Sí" ? "si" : "no", x_documentacion: c.documentacion === "Sí" ? "si" : "no",
         x_dictamen: DICT[d.resultado] || "no_apto", x_motivos: d.motivos.join(" | "), x_bloqueante: !!d.bloqueante, x_observaciones: (c.observaciones || "").trim(),
-        x_firma_legajo: g.x_legajo, x_firma_verificada: true, x_firma_fecha: aOdoo(ahora), x_clave_envio: c.claveEnvio || false,
+        x_firma_legajo: g.x_legajo, x_firma_verificada: true, x_firma_fecha: aOdoo(ahora), x_clave_envio: c.claveEnvio || false, ...(ing ? { x_ingreso_id: ing.id } : {}),
         ...Object.fromEntries(Object.entries(FL).map(([k, f]) => [f, c.movimiento === "Salida a uso" ? NIVEL[(c.fluidos || {})[k]] || false : false])),
         ...(d.resultado === "APTO CON OBSERVACIÓN" ? { x_gravedad: GRAV[c.gravedad], x_obs_falla: c.observacionFalla.trim(), x_ingreso_previsto: c.ingresoPrevisto, x_obs_logistica: c.logistica.trim() } : {}) }]);
-      // NO APTO en portón → pasa directo a Ingreso a mantenimiento (causa declarada «No apto en portón»), sin ingreso previsto.
-      if (d.resultado === "NO APTO") {
-        const ing = await this.crearIngreso({ vehiculoId: c.vehiculoId, unidad: c.unidad, causa: "No apto en portón", sistema: sistemaDe(d.motivos), relato: d.motivos.join(" · "),
-          declaro: "Guardia (chequeo en portón)", llegada: "Por sus medios", guardiaId: c.guardiaId, medida: c.medida, prioridad: d.bloqueante ? "3" : "1", fotos: {} }, g, ahora, nuevo);
-        await ejecutar("x_seg360_chequeo", "write", [[nuevo], { x_ingreso_id: ing.id }]);
-      }
+      if (ing) await ejecutar("maintenance.request", "write", [[ing.id], { x_chequeo_id: nuevo }]);
       return this.chequeo(nuevo);
     },
     /** Plazos editables: parámetros del sistema seg360.plazo.<gravedad>.<tipo> (horas); si no se pueden leer, valores iniciales del documento. */
