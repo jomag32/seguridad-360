@@ -1,4 +1,4 @@
-import { TIPOS, KIT, FLUIDOS, NIVELES, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave, validarChequeo, PLAZOS_H, ingresoPrevisto, CAUSAS, SISTEMAS, LLEGADAS, PRIORIDADES, FOTOS, fotosExigidas, validarIngreso, validarValidacion } from "./regla.js";
+import { TIPOS, KIT, FLUIDOS, NIVELES, PUESTOS, LLAVEROS, RESTRICCIONES, dictaminar, validarSemana, validarLlave, validarChequeo, PLAZOS_H, ingresoPrevisto, CAUSAS, SISTEMAS, LLEGADAS, PRIORIDADES, FOTOS, fotosExigidas, validarIngreso, validarValidacion, validarFotos, UBICACIONES } from "./regla.js";
 const $ = (s) => document.querySelector(s), esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const opts = (l, sel) => l.map(([v, t]) => `<option value="${v}"${v === sel ? " selected" : ""}>${esc(t)}</option>`).join("");
 let clave = localStorage.getItem("s360-clave") || "";
@@ -81,7 +81,7 @@ F.addEventListener("change", (e) => { if (e.target.name === "gravedad" || e.targ
 function previsto(c) {
   const pl = cat.plazos || PLAZOS_H, h = pl[c.gravedad]?.[c.tipo];
   $("#c-plazo").textContent = !c.gravedad ? "Elegí la gravedad: la fecha se calcula sola (hoy + plazo) y se puede corregir."
-    : h ? `Plazo ${c.gravedad} · ${c.tipo}: ${h} h (parámetro editable en Odoo). Se puede corregir la fecha.` : "Baja: hasta el próximo service programado. Cargá la fecha a mano.";
+    : h ? `Plazo ${c.gravedad} · ${c.tipo}: ${h} h (parámetro editable en Odoo). Se puede corregir la fecha.` : "Baja: hasta el próximo service programado. Sin fecha automática: Logística la carga (obligatoria).";
   if (!previstoEditado) F.ingresoPrevisto.value = ingresoPrevisto(c.gravedad, c.tipo, new Date(), pl) || "";
 }
 let espera = null;
@@ -133,11 +133,31 @@ const leerIngreso = () => { const v = T.vehiculo.value; return { vehiculoId: v &
   relato: T.relato.value.trim(), declaro: T.declaro.value.trim(), llegada: T.llegada.value, medida: T.medida.value === "" ? "" : Number(T.medida.value), prioridad: T.prioridad.value,
   guardiaId: +T.guardia.value || null, legajo: T.legajo.value.trim(), dni: T.dni.value.trim(), fotos }; };
 T.onchange = async (e) => { $("#t-otra").hidden = T.vehiculo.value !== OTRA;
-  const req = fotosExigidas(T.causa.value); document.querySelectorAll(".foto").forEach((d) => d.classList.toggle("req", req.includes(d.dataset.k)));
+  const req = fotosExigidas(completar ? completar.causa : T.causa.value); document.querySelectorAll(".foto").forEach((d) => d.classList.toggle("req", req.includes(d.dataset.k)));
   if (e?.target?.name === "vehiculo" || e?.target?.name === "unidad") { const i = leerIngreso(); const [s, r] = await api(`/api/ultima-medida?vehiculoId=${i.vehiculoId || ""}&unidad=${encodeURIComponent(i.unidad)}`);
     ultimo = s === 200 ? r.medida : null; $("#t-ultimo").textContent = ultimo != null ? `Último registro: ${ultimo}. No puede ser menor.` : ""; } };
+let completar = null; // pedido creado por NO APTO en portón: el guardia completa solo las fotos
+async function pendientes() {
+  const [s, l] = await api("/api/ingresos/fotos-pendientes"); if (s !== 200) return;
+  $("#t-pend").innerHTML = l.length ? `<h2>Fotos pendientes (NO APTO en portón)</h2>` + l.map((x) => `<div class="ing" data-id="${x.id}" data-causa="${esc(x.causa)}"><b>${esc(x.numero)}</b> · ${esc(x.unidad)}<br><small>${esc(x.relato)} · ${esc(x.validacion === "pendiente" ? "a validar" : x.validacion)}</small><div class="bot"><button type="button" class="si">Completar fotos</button></div></div>`).join("") + "<h2>Nuevo ingreso</h2>" : "";
+  document.querySelectorAll("#t-pend button").forEach((b) => (b.onclick = () => modo(b.closest(".ing"))));
+}
+function modo(d) {
+  completar = d ? { id: d.dataset.id, causa: d.dataset.causa, numero: d.querySelector("b").textContent } : null;
+  $("#t-datos").hidden = !!completar; $("#t-modo").hidden = !completar;
+  $("#t-modo").innerHTML = completar ? `Completando fotos de <b>${esc(completar.numero)}</b>. <a href="#taller" id="t-cancel">Cancelar</a>` : "";
+  T.querySelector(".prim").textContent = completar ? "Subir fotos del pedido" : "Dar OK de llegada y declarar ingreso";
+  document.querySelectorAll(".foto").forEach((x) => x.classList.toggle("req", fotosExigidas(completar ? completar.causa : T.causa.value).includes(x.dataset.k)));
+  if (completar) { $("#t-cancel").onclick = (e) => { e.preventDefault(); modo(null); }; T.scrollIntoView(); }
+}
 T.onsubmit = async (e) => {
-  e.preventDefault(); const i = leerIngreso(), err = validarIngreso(i, ultimo); $("#t-err").textContent = err.join(" · "); if (err.length) return;
+  e.preventDefault();
+  if (completar) { const f = { fotos, guardiaId: +T.guardia.value || null, legajo: T.legajo.value.trim(), dni: T.dni.value.trim() }, er = validarFotos(f, completar.causa);
+    $("#t-err").textContent = er.join(" · "); if (er.length) return;
+    const [s, r] = await api(`/api/ingresos/${completar.id}/fotos`, f); if (s !== 200) return ($("#t-err").textContent = errores(r));
+    const el = $("#t-res"); el.className = "dict APTO"; el.innerHTML = `<small>${esc(r.numero)}</small><big>FOTOS OK</big><b>Fotos subidas al pedido en Odoo › Mantenimiento</b>`;
+    T.legajo.value = T.dni.value = ""; modo(null); pendientes(); return; }
+  const i = leerIngreso(), err = validarIngreso(i, ultimo); $("#t-err").textContent = err.join(" · "); if (err.length) return;
   const [s, r] = await api("/api/ingresos", i);
   if (s === 201) { const el = $("#t-res"); el.className = "dict OBS"; el.innerHTML = `<small>Ingreso declarado · ${esc(r.numero)}</small><big>A VALIDAR</big><b>OK del guardia ${esc(r.guardia)} · ${fh(r.okGuardia)}</b><small>Logística tiene que validar la causa (mismo día).</small>`;
     T.legajo.value = T.dni.value = ""; el.scrollIntoView({ behavior: "smooth" }); } else $("#t-err").textContent = errores(r);
@@ -146,16 +166,17 @@ T.onsubmit = async (e) => {
 async function logistica() {
   const [s, l] = await api("/api/ingresos?todos=1"); if (s !== 200) return;
   $("#v-lista").innerHTML = l.length ? l.map((x) => `<div class="ing ${x.validacion}" data-id="${x.id}"><b>${esc(x.numero)}</b> · ${esc(x.unidad)}${x.equipo ? " · equipo " + esc(x.equipo) : ""}<br>
-    Causa: <b>${esc(x.causa)}</b> · ${esc(x.sistema)} · <i style="color:#f59e0b">${"★".repeat(+x.prioridad)}</i> ${esc(x.gravedad)}<br><small>«${esc(x.relato)}» · declaró ${esc(x.declaro)} · llega ${esc(x.llegada)} · ${x.medida} km/h<br>
+    Causa: <b>${esc(x.causa)}</b> · ${esc(x.sistema)} · <i style="color:#f59e0b">${"★".repeat(+x.prioridad)}</i> ${esc(x.gravedad)}<br><small>«${esc(x.relato)}» · declaró ${esc(x.declaro)} · llega ${esc(x.llegada)} · ${x.medida} km/h${x.fotosPendientes ? " · <b>fotos pendientes</b>" : ""}<br>
     OK guardia ${esc(x.guardia)} · ${fh(x.okGuardia)} · etapa: ${esc(x.etapa)}</small>
-    ${x.validacion === "pendiente" ? `<label>Motivo (si no valida)<input class="mot"></label><div class="bot"><button class="si">Valida: ingresa</button><button class="no">No valida: a Playa</button></div>`
-    : x.validacion === "valida" ? `<br><b>✔ Validó ${esc(x.validoPor)} · ingresó ${fh(x.ingresoFecha)} · corre el plazo</b>`
+    ${x.validacion === "pendiente" ? `<label>Ubicación (si valida)<select class="ubi">${opts(UBICACIONES.map((u) => [u, u]), "Taller propio")}</select></label><label>Motivo (si no valida)<input class="mot"></label><div class="bot"><button class="si">Valida: ingresa</button><button class="no">No valida: a Playa</button></div>`
+    : x.validacion === "valida" ? `<br><b>✔ Validó ${esc(x.validoPor)} · ingresó ${fh(x.ingresoFecha)} · corre el plazo</b><label>Ubicación<select class="ubi-cambio">${opts(UBICACIONES.map((u) => [u, u]), x.ubicacion)}</select></label>`
     : `<br><b>✖ No validó ${esc(x.validoPor)}: ${esc(x.motivoRechazo)} · vuelve a Playa disponible (declaró ${esc(x.declaro)})</b>`}</div>`).join("") : "<p>No hay ingresos.</p>";
   document.querySelectorAll(".ing button").forEach((b) => (b.onclick = async () => {
-    const d = b.closest(".ing"), v = { valida: b.classList.contains("si"), por: $("#v-por").value.trim(), motivo: d.querySelector(".mot").value.trim() };
+    const d = b.closest(".ing"), v = { valida: b.classList.contains("si"), por: $("#v-por").value.trim(), motivo: d.querySelector(".mot").value.trim(), ubicacion: d.querySelector(".ubi").value };
     const e = validarValidacion(v); $("#v-err").textContent = e.join(" · "); if (e.length) return;
     const [s2, r2] = await api(`/api/ingresos/${d.dataset.id}/validacion`, v); if (s2 !== 200) return ($("#v-err").textContent = errores(r2)); logistica();
   }));
+  document.querySelectorAll(".ubi-cambio").forEach((x) => (x.onchange = async () => { const [s3, r3] = await api(`/api/ingresos/${x.closest(".ing").dataset.id}/ubicacion`, { ubicacion: x.value }); $("#v-err").textContent = s3 === 200 ? "" : errores(r3); }));
 }
 // ---------- Devolución de llave ----------
 const L = $("#l-f");
@@ -193,7 +214,7 @@ function ruta() {
   const v = (location.hash || "#chequeo").slice(1);
   ["semana", "chequeo", "taller", "logistica", "llave", "registros"].forEach((x) => ($("#v-" + x).hidden = x !== v));
   document.querySelectorAll("nav a").forEach((a) => a.classList.toggle("act", a.hash === "#" + v));
-  if (v === "registros") registros(); if (v === "logistica") logistica();
+  if (v === "registros") registros(); if (v === "logistica") logistica(); if (v === "taller") pendientes();
 }
 addEventListener("hashchange", ruta);
 $("#i-f").onsubmit = async (e) => {
@@ -209,6 +230,7 @@ async function descargar(u, nombre) {
 }
 $("#x-cheq").onclick = (e) => { e.preventDefault(); descargar("/api/export/chequeos.csv", "seguridad-360-chequeos.csv"); };
 $("#x-guard").onclick = (e) => { e.preventDefault(); descargar("/api/export/guardias.csv", "seguridad-360-guardias.csv"); };
+$("#x-ing").onclick = (e) => { e.preventDefault(); descargar("/api/export/ingresos.csv", "seguridad-360-ingresos.csv"); };
 $("#x-llave").onclick = (e) => { e.preventDefault(); descargar("/api/export/llaves.csv", "seguridad-360-llaves.csv"); };
 $("#s-inicio").value = lunes(); kit();
 const iniciar = () => cargarCatalogos().then(cargarSemana).then(() => { if (semana) $("#s-inicio").value = semana.inicio; armarSemana(); ruta(); }).catch(() => {});

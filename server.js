@@ -2,7 +2,7 @@
 // Todo se guarda en Odoo (modelos x_seg360_*) con el usuario de servicio; la app es solo el frente para el teléfono.
 // Env: ACCESS_KEY, ODOO_URL, ODOO_DB, ODOO_USER, ODOO_PASSWORD (nunca van al código ni a los logs).
 import http from "node:http"; import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url"; import crypto from "node:crypto";
-import { dictaminar, validarSemana, validarLlave, validarChequeo, validarIngreso, validarValidacion, RESTRICCIONES } from "./public/regla.js";
+import { dictaminar, validarSemana, validarLlave, validarChequeo, validarIngreso, validarValidacion, validarFotos, UBICACIONES, RESTRICCIONES } from "./public/regla.js";
 import { crearCliente, ErrorOdoo } from "./odoo.js"; import { crearDatos } from "./datos-odoo.js";
 const RAIZ = path.dirname(fileURLToPath(import.meta.url));
 const TIPO = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".ico": "image/x-icon" };
@@ -24,6 +24,16 @@ export function crearApp(datos) {
       if (u.pathname === "/api/catalogos") return json(r, 200, { ...(await datos.catalogos()), plazos: await datos.plazos() });
       // Etapa 1 · Ingreso a mantenimiento (maintenance.request) y validación de Logística
       if (u.pathname === "/api/ultima-medida") return json(r, 200, { medida: await datos.ultimaMedida(u.searchParams.get("vehiculoId"), u.searchParams.get("unidad")) });
+      if (u.pathname === "/api/ingresos/fotos-pendientes") return json(r, 200, await datos.fotosPendientes());
+      const mf = u.pathname.match(/^\/api\/ingresos\/(\d+)\/fotos$/);
+      if (mf && q.method === "POST") {
+        const f = await cuerpo(q, 12e6); const ing = await datos.ingreso(mf[1]); if (!ing) return json(r, 404, { error: "no encontrado" });
+        const e = validarFotos(f, ing.causa); if (e.length) return json(r, 422, { errores: e });
+        const g = await datos.firmar(f.guardiaId, f.legajo, f.dni); if (!g) return json(r, 422, { errores: ["Firma: el legajo o el DNI no coinciden con el guardia elegido"] });
+        return json(r, 200, await datos.completarFotos(mf[1], f.fotos, g));
+      }
+      const mu = u.pathname.match(/^\/api\/ingresos\/(\d+)\/ubicacion$/);
+      if (mu && q.method === "POST") { const b = await cuerpo(q); if (!UBICACIONES.includes(b.ubicacion)) return json(r, 422, { errores: ["Elegí la ubicación"] }); return json(r, 200, await datos.cambiarUbicacion(mu[1], b.ubicacion)); }
       if (u.pathname === "/api/ingresos" && q.method === "GET") return json(r, 200, await datos.ingresos(u.searchParams.get("todos") !== "1"));
       if (u.pathname === "/api/ingresos" && q.method === "POST") {
         const i = await cuerpo(q, 12e6); const e = validarIngreso(i, await datos.ultimaMedida(i.vehiculoId, i.unidad)); if (e.length) return json(r, 422, { errores: e });
@@ -64,10 +74,15 @@ export function crearApp(datos) {
         return json(r, 201, await datos.crearLlave(b, g));
       }
       if (u.pathname === "/api/export/chequeos.csv") {
-        const f = [["numero", "fecha", "movimiento", "guardia", "unidad", "tipo", "porton", "km_horas", "frenos", "luces", "vtv_rto", "documentacion", "liq_frenos", "refrigerante", "aceite_motor", "kit", "resultado", "motivos", "estado", "autorizo", "motivo_autorizacion", "observaciones"]];
+        const f = [["numero", "fecha", "movimiento", "guardia", "unidad", "tipo", "porton", "km_horas", "frenos", "luces", "vtv_rto", "documentacion", "liq_frenos", "refrigerante", "aceite_motor", "kit", "resultado", "motivos", "estado", "autorizo", "motivo_autorizacion", "observaciones", "gravedad_obs", "observacion_falla", "ingreso_previsto", "logistica_obs", "ingreso_mantenimiento"]];
         (await datos.chequeos(0)).forEach((c) => f.push([c.numero, c.fecha, c.movimiento, c.guardia, c.unidad, c.tipo, c.acceso, c.medida, c.frenos, c.luces, c.vtv, c.documentacion, c.fluidos?.frenos, c.fluidos?.refrigerante, c.fluidos?.aceite,
-          Object.entries(c.kit).map(([k, v]) => `${k}:${v}`).join(" | "), c.dictamen.resultado, c.dictamen.motivos.join(" | "), c.estadoTexto, c.autorizacion?.por, c.autorizacion?.motivo, c.observaciones]));
+          Object.entries(c.kit).map(([k, v]) => `${k}:${v}`).join(" | "), c.dictamen.resultado, c.dictamen.motivos.join(" | "), c.estadoTexto, c.autorizacion?.por, c.autorizacion?.motivo, c.observaciones, c.conObservacion?.gravedad, c.conObservacion?.observacion, c.conObservacion?.ingresoPrevisto, c.conObservacion?.logistica, c.ingresoId]));
         return enviarCsv(r, "chequeos", f);
+      }
+      if (u.pathname === "/api/export/ingresos.csv") {
+        const f = [["numero", "unidad", "equipo", "causa", "sistema", "relato", "declaro", "llegada", "guardia_ok", "fecha_ok", "km_horas", "gravedad", "etapa", "validacion", "valido_por", "fecha_validacion", "ingreso_taller", "ubicacion", "motivo_rechazo", "fotos_pendientes"]];
+        (await datos.ingresos(false)).forEach((x) => f.push([x.numero, x.unidad, x.equipo, x.causa, x.sistema, x.relato, x.declaro, x.llegada, x.guardia, x.okGuardia, x.medida, x.gravedad, x.etapa, x.validacion, x.validoPor, x.validacionFecha, x.ingresoFecha, x.ubicacion, x.motivoRechazo, x.fotosPendientes ? "sí" : "no"]));
+        return enviarCsv(r, "ingresos", f);
       }
       if (u.pathname === "/api/export/llaves.csv") {
         const f = [["numero", "fecha_hora", "unidad", "color", "restricciones", "otra", "entrego", "guardia_recibe", "observaciones", "registrado"]];

@@ -24,9 +24,19 @@ await p.selectOption("#t-guardia", "1"); await p.fill("#t-f [name=legajo]", "L-1
 await p.screenshot({ path: D + "etapa1-3-ingreso-mantenimiento-form.png", fullPage: true });
 await p.click("#t-f .prim"); await p.waitForSelector("#t-res small:has-text('declarado')"); await p.locator("#t-res").scrollIntoViewIfNeeded();
 await p.screenshot({ path: D + "etapa1-4-ingreso-declarado.png" });
+await p.goto(U + "#taller"); await p.reload(); await p.waitForSelector("#t-pend .ing button");
+await p.locator("#t-pend button").first().click(); await p.setInputFiles(".foto[data-k=tablero] input", img); await p.setInputFiles(".foto[data-k=zona] input", img);
+await p.waitForTimeout(300); await p.selectOption("#t-guardia", "1"); await p.fill("#t-f [name=legajo]", "L-10"); await p.fill("#t-f [name=dni]", "20111222");
+await p.evaluate(() => scrollTo(0, 0)); await p.screenshot({ path: D + "etapa1-7-fotos-pendientes-no-apto.png", fullPage: true });
+await p.click("#t-f .prim"); await p.waitForSelector("#t-res big:has-text('FOTOS OK')");
 await p.goto(U + "#logistica"); await p.waitForSelector(".ing button"); await p.fill("#v-por", "Logística (prueba)");
 await p.screenshot({ path: D + "etapa1-5-logistica-a-validar.png", fullPage: true });
+await p.locator(".ing.pendiente .ubi").first().selectOption("Playa en espera");
 await p.locator(".ing button.si").first().click(); await p.waitForSelector(".ing.valida");
 await p.locator(".ing.pendiente .mot").first().fill("No se verifica la falla declarada"); await p.locator(".ing.pendiente button.no").first().click(); await p.waitForSelector(".ing.rechazada");
 await p.screenshot({ path: D + "etapa1-6-logistica-valida-y-rechaza.png", fullPage: true });
+// Gravedad Baja: sin fecha automática, la carga Logística
+await p.goto(U + "#chequeo"); await p.reload(); await p.waitForSelector("#c-guardia option:nth-child(2)", { state: "attached" });
+await p.check("[name=estadoLogistica][value='Apto con observación']"); await p.check("[name=gravedad][value=Baja]"); await p.fill("[name=observacionFalla]", "Tapizado roto (estética)");
+await p.locator("#c-obsdet").scrollIntoViewIfNeeded(); await p.screenshot({ path: D + "etapa1-8-porton-gravedad-baja-fecha-manual.png" });
 await b.close();

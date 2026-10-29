@@ -17,12 +17,12 @@ const FL = { frenos: "x_nivel_liq_frenos", refrigerante: "x_nivel_refrigerante",
 const DICT = { "APTO": "apto", "APTO CON OBSERVACIÓN": "apto_obs", "NO APTO": "no_apto" }; const DICT_INV = Object.fromEntries(Object.entries(DICT).map(([a, b]) => [b, a]));
 const GRAV = { Alta: "alta", Media: "media", Baja: "baja" }; const GRAV_INV = Object.fromEntries(Object.entries(GRAV).map(([a, b]) => [b, a]));
 export const SEL = (l) => Object.fromEntries(l.map((t) => [t, t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 30)]));
-import { CAUSAS, SISTEMAS, LLEGADAS } from "./public/regla.js";
-const CAUSA = SEL(CAUSAS), SIST = SEL(SISTEMAS), LLEG = SEL(LLEGADAS);
+import { CAUSAS, SISTEMAS, LLEGADAS, UBICACIONES, fotosExigidas } from "./public/regla.js";
+const CAUSA = SEL(CAUSAS), SIST = SEL(SISTEMAS), LLEG = SEL(LLEGADAS), UBIC = SEL(UBICACIONES);
 const inv = (o) => Object.fromEntries(Object.entries(o).map(([a, b]) => [b, a]));
 const ETAPA_PENDIENTE = "Ingreso a validar (Logística)", ETAPA_INGRESA = "A iniciar";
 const MR_F = ["name", "equipment_id", "x_vehiculo_id", "x_unidad_texto", "x_causa", "x_sistema", "description", "x_llegada", "x_guardia_id", "x_ok_guardia_fecha", "x_km_horas_llegada",
-  "priority", "stage_id", "x_validacion", "x_declaro", "x_valido_por", "x_validacion_fecha", "x_ingreso_fecha", "x_rechazo_motivo", "x_chequeo_id", "request_date"];
+  "priority", "stage_id", "x_validacion", "x_declaro", "x_valido_por", "x_validacion_fecha", "x_ingreso_fecha", "x_rechazo_motivo", "x_chequeo_id", "request_date", "x_ubicacion", "x_fotos_pendientes"];
 const n = (v) => (Array.isArray(v) ? v[1] : "");
 const id = (v) => (Array.isArray(v) ? v[0] : null);
 const kitTexto = (k) => Object.entries(k || {}).map(([a, b]) => `${a}: ${b}`).join("\n");
@@ -37,7 +37,7 @@ const mapMr = (r) => ({ id: r.id, numero: r.name, equipo: n(r.equipment_id), uni
   causa: inv(CAUSA)[r.x_causa] || r.x_causa, sistema: inv(SIST)[r.x_sistema] || r.x_sistema, relato: r.description || "", llegada: inv(LLEG)[r.x_llegada] || r.x_llegada,
   guardia: n(r.x_guardia_id), okGuardia: deOdoo(r.x_ok_guardia_fecha), medida: r.x_km_horas_llegada, prioridad: r.priority, gravedad: (PRIORIDADES.find(([, v]) => v === r.priority) || [""])[0],
   etapa: n(r.stage_id), validacion: r.x_validacion, declaro: r.x_declaro || "", validoPor: r.x_valido_por || "", validacionFecha: deOdoo(r.x_validacion_fecha),
-  ingresoFecha: deOdoo(r.x_ingreso_fecha), motivoRechazo: r.x_rechazo_motivo || "", chequeoId: id(r.x_chequeo_id) });
+  ingresoFecha: deOdoo(r.x_ingreso_fecha), motivoRechazo: r.x_rechazo_motivo || "", chequeoId: id(r.x_chequeo_id), ubicacion: inv(UBIC)[r.x_ubicacion] || "", fotosPendientes: !!r.x_fotos_pendientes });
 export function crearDatos(ejecutar) {
   const sr = (m, dom, fields, kw = {}) => ejecutar(m, "search_read", [dom], { fields, ...kw });
   const mapCh = (r) => ({ id: r.id, numero: r.x_name, fecha: deOdoo(r.x_fecha_hora), movimiento: r.x_movimiento === "salida" ? "Salida a uso" : "Retorno de uso",
@@ -107,13 +107,23 @@ export function crearDatos(ejecutar) {
         x_unidad_texto: i.vehiculoId ? false : (i.unidad || "").trim(), maintenance_type: i.causa === "Service por km u horas" ? "preventive" : "corrective",
         x_causa: CAUSA[i.causa], x_sistema: SIST[i.sistema], description: i.relato.trim(), x_declaro: i.declaro.trim(), x_llegada: LLEG[i.llegada], x_guardia_id: +i.guardiaId,
         x_ok_guardia_fecha: aOdoo(ahora), x_km_horas_llegada: Number(i.medida), priority: i.prioridad, x_validacion: "pendiente", x_chequeo_id: chequeoId,
-        x_firma_legajo: g.x_legajo, x_firma_verificada: true, ...(st ? { stage_id: st.id } : {}) }]);
-      for (const [k, d] of Object.entries(i.fotos || {})) {
-        const m = /^data:(image\/[a-z]+);base64,(.+)$/.exec(d || ""); if (!m) continue;
-        await ejecutar("ir.attachment", "create", [{ name: `${k}.${m[1].split("/")[1]}`, mimetype: m[1], datas: m[2], res_model: "maintenance.request", res_id: nuevo }]);
-      }
+        x_firma_legajo: g.x_legajo, x_firma_verificada: true, ...(st ? { stage_id: st.id } : {}),
+        x_fotos_pendientes: fotosExigidas(i.causa).some((k) => !(i.fotos || {})[k]) }]);
+      await this._fotos(nuevo, i.fotos);
       return this.ingreso(nuevo);
     },
+    async _fotos(rid, fotos) {
+      for (const [k, d] of Object.entries(fotos || {})) {
+        const m = /^data:(image\/[a-z]+);base64,(.+)$/.exec(d || ""); if (!m) continue;
+        await ejecutar("ir.attachment", "create", [{ name: `${k}.${m[1].split("/")[1]}`, mimetype: m[1], datas: m[2], res_model: "maintenance.request", res_id: rid }]);
+      }
+    },
+    async fotosPendientes() { return (await sr("maintenance.request", [["x_fotos_pendientes", "=", true]], MR_F, { order: "id desc", limit: 50 })).map(mapMr); },
+    async completarFotos(i, fotos, g) {
+      await this._fotos(+i, fotos);
+      await ejecutar("maintenance.request", "write", [[+i], { x_fotos_pendientes: false, x_firma_legajo: g.x_legajo }]); return this.ingreso(i);
+    },
+    async cambiarUbicacion(i, u) { await ejecutar("maintenance.request", "write", [[+i], { x_ubicacion: UBIC[u] }]); return this.ingreso(i); },
     async ingreso(i) { const [r] = await ejecutar("maintenance.request", "read", [[+i]], { fields: MR_F }); return r ? mapMr(r) : null; },
     async ingresos(pendientes = true) { return (await sr("maintenance.request", pendientes ? [["x_validacion", "=", "pendiente"]] : [["x_validacion", "!=", false]], MR_F, { order: "id desc", limit: 50 })).map(mapMr); },
     /** Logística: valida → ingresa (corre el reloj: x_ingreso_fecha) · no valida → vuelve a Playa disponible (queda registrado quién declaró y el motivo). */
@@ -122,7 +132,7 @@ export function crearDatos(ejecutar) {
       if (!r) return null; if (r.x_validacion !== "pendiente") throw Object.assign(new Error("ya validado"), { yaValidado: true });
       const base = { x_valido_por: v.por.trim(), x_validacion_fecha: aOdoo(ahora) };
       if (v.valida) { const [st] = await sr("maintenance.stage", [["name", "=", ETAPA_INGRESA]], ["id"], { limit: 1 });
-        await ejecutar("maintenance.request", "write", [[+i], { ...base, x_validacion: "valida", x_ingreso_fecha: aOdoo(ahora), ...(st ? { stage_id: st.id } : {}) }]); }
+        await ejecutar("maintenance.request", "write", [[+i], { ...base, x_validacion: "valida", x_ingreso_fecha: aOdoo(ahora), x_ubicacion: UBIC[v.ubicacion], ...(st ? { stage_id: st.id } : {}) }]); }
       else await ejecutar("maintenance.request", "write", [[+i], { ...base, x_validacion: "rechazada", x_rechazo_motivo: v.motivo.trim() }]);
       return this.ingreso(i);
     },

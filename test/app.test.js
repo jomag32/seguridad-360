@@ -96,9 +96,20 @@ test("ingreso declarado: km menor al último → 422; faltan fotos → 422; ok �
   let [s, r] = await post("/api/ingresos", i); assert.equal(s, 422); assert.match(r.errores.join(), /menor que el último/); assert.match(r.errores.join(), /Faltan fotos/);
   [s, r] = await post("/api/ingresos", { ...i, medida: 1300, fotos: { tablero: png, zona: png, frente: png, atras: png, izq: png, der: png } }); assert.equal(s, 201);
   assert.equal(r.validacion, "pendiente"); assert.equal(o.db["ir.attachment"].filter((a) => a.res_id === r.id).length, 6);
-  let [s2, v] = await post(`/api/ingresos/${r.id}/validacion`, { valida: true, por: "Logística 1" }); assert.equal(s2, 200); assert.equal(v.etapa, "A iniciar"); assert.ok(v.ingresoFecha);
+  let [s2, v] = await post(`/api/ingresos/${r.id}/validacion`, { valida: true, por: "Logística 1", ubicacion: "Taller propio" }); assert.equal(s2, 200); assert.equal(v.etapa, "A iniciar"); assert.ok(v.ingresoFecha);
   [s2] = await post(`/api/ingresos/${r.id}/validacion`, { valida: false, por: "x", motivo: "y" }); assert.equal(s2, 409);
   [s, r] = await post("/api/ingresos", { ...i, causa: "Falla en uso", medida: 1400 }); 
   [s2, v] = await post(`/api/ingresos/${r.id}/validacion`, { valida: false, por: "Logística 1", motivo: "No se verifica la falla" }); assert.equal(v.validacion, "rechazada"); assert.equal(v.declaro, "Chofer A");
   assert.deepEqual(validarIngreso({ ...i, causa: "" }).some((e) => /causa/.test(e)), true);
+});
+test("NO APTO auto → fotos pendientes; el guardia las completa; valida exige ubicación; ubicación editable; CSV ingresos", async () => {
+  const [, r] = await post("/api/chequeos", { ...chq, movimiento: "Retorno de uso", vehiculoId: 5, luces: "NO", medida: 1500 });
+  const [, pend] = await get("/api/ingresos/fotos-pendientes"); assert.ok(pend.some((x) => x.id === r.ingresoId));
+  let [s, e] = await post(`/api/ingresos/${r.ingresoId}/fotos`, { fotos: { tablero: png }, guardiaId: 1, legajo: "L-10", dni: "20111222" }); assert.equal(s, 422); assert.match(e.errores[0], /Zona/);
+  [s, e] = await post(`/api/ingresos/${r.ingresoId}/fotos`, { fotos: { tablero: png, zona: png }, guardiaId: 1, legajo: "L-10", dni: "20111222" }); assert.equal(s, 200); assert.equal(e.fotosPendientes, false);
+  [s, e] = await post(`/api/ingresos/${r.ingresoId}/validacion`, { valida: true, por: "L" }); assert.equal(s, 422); assert.match(e.errores[0], /ubicación/);
+  [s, e] = await post(`/api/ingresos/${r.ingresoId}/validacion`, { valida: true, por: "L", ubicacion: "Playa en espera" }); assert.equal(e.ubicacion, "Playa en espera");
+  [s, e] = await post(`/api/ingresos/${r.ingresoId}/ubicacion`, { ubicacion: "Varada en obra o ruta" }); assert.equal(e.ubicacion, "Varada en obra o ruta");
+  const csv = await (await fetch(base + "/api/export/ingresos.csv", { headers: h })).text(); assert.match(csv, /ubicacion/); assert.match(csv, /Varada/);
+  const c2 = await (await fetch(base + "/api/export/chequeos.csv", { headers: h })).text(); assert.match(c2, /ingreso_previsto/);
 });

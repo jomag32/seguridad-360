@@ -29,6 +29,7 @@ def F(etq, t, rel=None, **kw): return {"ttype": t, "field_description": etq, **(
 CAUSAS = sel("Falla en uso", "No apto en portón", "Ingreso previsto vencido", "Daño o accidente", "Service por km u horas", "Vencimiento documental")
 SISTEMAS = sel("Frenos", "Luces / eléctrico", "Motor", "Caja / transmisión", "Dirección / suspensión", "Neumáticos", "Refrigeración", "Hidráulico", "Carrocería", "Climatización", "Kit obligatorio", "Documentación", "Service preventivo", "Otro")
 LLEGADAS = sel("Por sus medios", "Remolcada", "En grúa o carretón", "Quedó en la calle: la trae Logística")
+UBICACIONES = sel("Taller propio", "Playa en espera", "En proveedor", "Varada en obra o ruta")  # «En proveedor»: lógica en etapa 2
 GRAV = [("alta", "Alta"), ("media", "Media"), ("baja", "Baja")]
 TIPOS = [("liviano", "Liviano"), ("pesado", "Pesado"), ("maquina", "Máquina"), ("semirremolque", "Semirremolque")]
 PLAZOS = {"alta": dict(liviano=24, pesado=24, maquina=24, semirremolque=24), "media": dict(liviano=72, pesado=48, maquina=48, semirremolque=48)}  # Baja: próximo service (sin plazo)
@@ -45,7 +46,8 @@ CAMPOS = {
    "x_validacion": S("Validación de Logística", [("pendiente", "A validar"), ("valida", "Valida: ingresa"), ("rechazada", "No valida: vuelve a Playa disponible")]),
    "x_valido_por": F("Validó / rechazó (Logística)", "char"), "x_validacion_fecha": F("Fecha de validación", "datetime"),
    "x_ingreso_fecha": F("Ingreso a taller (corre el plazo)", "datetime"), "x_rechazo_motivo": F("Motivo de no validación", "text"),
-   "x_chequeo_id": F("Chequeo de portón (NO APTO)", "many2one", "x_seg360_chequeo", on_delete="set null")},
+   "x_chequeo_id": F("Chequeo de portón (NO APTO)", "many2one", "x_seg360_chequeo", on_delete="set null"),
+   "x_ubicacion": S("Ubicación", UBICACIONES), "x_fotos_pendientes": F("Fotos pendientes (las completa el guardia)", "boolean")},
 }
 PLAZO_MODELO = "x_seg360_plazo"
 PLAZO_CAMPOS = {"x_gravedad": S("Gravedad", GRAV, required=True), "x_tipo": S("Tipo de unidad", TIPOS, required=True), "x_horas": F("Plazo (horas)", "integer"), "x_active": F("Activo", "boolean")}
@@ -61,7 +63,8 @@ VISTAS = {
    '<field name="x_causa"/><field name="x_sistema"/><field name="x_declaro"/><field name="x_llegada"/><field name="x_km_horas_llegada"/></group><group>'
    '<field name="x_guardia_id"/><field name="x_ok_guardia_fecha"/><field name="x_firma_verificada"/><field name="x_validacion" decoration-success="x_validacion == \'valida\'"/>'
    '<field name="x_valido_por"/><field name="x_validacion_fecha"/><field name="x_ingreso_fecha"/><field name="x_rechazo_motivo" invisible="x_validacion != \'rechazada\'"/>'
-   '<field name="x_chequeo_id"/></group></group></xpath></data>'),
+   '<field name="x_ubicacion"/><field name="x_fotos_pendientes"/><field name="x_chequeo_id"/></group></group></xpath>'
+   '<xpath expr="//header" position="inside">__BOTONES__</xpath></data>'),
 }
 AUTOS = [
  ("Seguridad 360 · R-S360-4 km/horas de llegada no menor al último registro", "maintenance.request", "on_create", None,
@@ -81,6 +84,19 @@ AUTOS = [
   " 'x_validacion': 'pendiente', 'priority': '2', 'x_chequeo_id': r.id, 'stage_id': st.id if st else False})\n"
   "    r.write({'x_ingreso_id': mr.id})\n"),
 ]
+# Botones Valida / No valida en el formulario del pedido (mismo efecto que la app). Grupo: «Seguridad 360 / Autoriza salida» (Jefe de Logística).
+G_LOG = "Seguridad 360 / Autoriza salida"
+BOTONES = [
+ ("Seguridad 360 · Valida: ingresa", "valida",
+  "st = env['maintenance.stage'].search([('name', '=', 'A iniciar')], limit=1)\n"
+  "for r in records.filtered(lambda x: x.x_validacion == 'pendiente'):\n"
+  "    r.write({'x_validacion': 'valida', 'x_valido_por': env.user.name, 'x_validacion_fecha': datetime.datetime.now(), 'x_ingreso_fecha': datetime.datetime.now(),"
+  " 'x_ubicacion': r.x_ubicacion or 'taller_propio', 'stage_id': st.id or r.stage_id.id})\n"),
+ ("Seguridad 360 · No valida: vuelve a Playa disponible", "rechaza",
+  "for r in records.filtered(lambda x: x.x_validacion == 'pendiente'):\n"
+  "    if not (r.x_rechazo_motivo or '').strip():\n        raise UserError('No valida: cargá primero el «Motivo de no validación».')\n"
+  "    r.write({'x_validacion': 'rechazada', 'x_valido_por': env.user.name, 'x_validacion_fecha': datetime.datetime.now()})\n"),
+]
 G_API = "Seguridad 360 / Servicio API"; G_RESP = "Seguridad 360 / Responsable"
 ACCESOS = [("maintenance.request", G_API, (1, 1, 1, 0)), ("maintenance.equipment", G_API, (1, 0, 0, 0)), ("maintenance.stage", G_API, (1, 0, 0, 0)),
            (PLAZO_MODELO, G_API, (1, 0, 0, 0)), (PLAZO_MODELO, G_RESP, (1, 1, 1, 1))]
@@ -90,7 +106,7 @@ def campos(model): return {f["name"]: f["id"] for f in c("ir.model.fields", "sea
 print("modo:", "APPLY" if APPLY else "ROLLBACK" if ROLLBACK else "DRY-RUN (no cambia nada)")
 inst = {x["name"]: x["state"] for x in c("ir.module.module", "search_read", [["name", "in", ["maintenance", "fleet", "base_automation"]]], fields=["name", "state"])}
 print("módulos:", inst); assert all(v == "installed" for v in inst.values()), "falta un módulo"
-vehs = c("fleet.vehicle", "search_read", [], fields=["license_plate", "display_name"])
+vehs = c("fleet.vehicle", "search_read", [], fields=["license_plate", "display_name", "model_id"]); RENOMBRES = []
 eq_campos = campos("maintenance.equipment")
 ya_mapeados = {e["x_vehiculo_id"][0] for e in c("maintenance.equipment", "search_read", [["x_vehiculo_id", "!=", False]], fields=["x_vehiculo_id"])} if "x_vehiculo_id" in eq_campos else set()
 
@@ -101,11 +117,17 @@ if ROLLBACK:
     for nombre, *_ in AUTOS:
         for a in c("base.automation", "search_read", [["name", "=", nombre]], fields=["action_server_ids"]):
             print("borra automatización", nombre); c("base.automation", "unlink", [a["id"]]); c("ir.actions.server", "unlink", a["action_server_ids"])
+    for nb, _, _ in BOTONES:
+        a = c("ir.actions.server", "search", [["name", "=", nb]]); a and (print("borra acción", nb), c("ir.actions.server", "unlink", a))
     for _, (nv, _) in VISTAS.items():
         v = c("ir.ui.view", "search", [["name", "=", nv]]); v and (print("borra vista", nv), c("ir.ui.view", "unlink", v))
     cat = c("maintenance.equipment.category", "search", [["name", "=", CATEG]])
     if cat:
-        eqs = c("maintenance.equipment", "search", [["category_id", "in", cat]]); print("borra equipos de flota creados", len(eqs))
+        rb = os.environ.get("BACKUP_EQUIPOS")  # archivo *-equipos.json del --apply: restaura nombre/categoría de los equipos reutilizados
+        previos = json.load(open(rb)) if rb else []
+        for e in previos: print("restaura equipo", e["equipo_id"]); c("maintenance.equipment", "write", [e["equipo_id"]], {"name": e["nombre_anterior"], "category_id": e["categoria_anterior"] and e["categoria_anterior"][0], "x_vehiculo_id": False})
+        eqs = c("maintenance.equipment", "search", [["category_id", "in", cat], ["id", "not in", [e["equipo_id"] for e in previos]]]); print("borra equipos de flota creados", len(eqs))
+        if not rb and c("maintenance.equipment", "search_count", [["category_id", "in", cat], ["create_date", "<", "2026-10-29"]]): sys.exit("ABORTA: hay equipos reutilizados; pasá BACKUP_EQUIPOS=<backup>-equipos.json")
         if c("maintenance.request", "search_count", [["equipment_id", "in", eqs]]): sys.exit("ABORTA: hay pedidos de mantenimiento sobre esos equipos.")
         c("maintenance.equipment", "unlink", eqs); c("maintenance.equipment.category", "unlink", cat)
     st = c("maintenance.stage", "search", [["name", "=", ETAPA]])
@@ -155,13 +177,36 @@ for mo, fs in CAMPOS.items():
 cat = c("maintenance.equipment.category", "search", [["name", "=", CATEG]])
 cat = cat[0] if cat else hacer(f"categoría de equipos «{CATEG}»", lambda: c("maintenance.equipment.category", "create", {"name": CATEG}))
 falta = [v for v in vehs if v["id"] not in ya_mapeados]
-print(f"vehículos en Flota: {len(vehs)} · ya con equipo: {len(ya_mapeados)} · a crear: {len(falta)} (nombre = patente · modelo; sin datos personales)")
+def nombre(v):
+    mod = v["model_id"][1] if v.get("model_id") else v["display_name"]
+    return f"{v['license_plate']} · {mod}" if v["license_plate"] else mod
+norm = lambda t: re.sub(r"[^a-z0-9]", "", (t or "").lower())
+equipos = c("maintenance.equipment", "search_read", [], fields=["name", "category_id"])
+nuevos = vinculados = 0
 for v in falta:
-    nom = f"{v['license_plate']} · {v['display_name']}" if v["license_plate"] else v["display_name"]
-    hacer(f"equipo «{nom}» (fleet.vehicle {v['id']}) en {CATEG}", lambda v=v, nom=nom: c("maintenance.equipment", "create", {"name": nom, "category_id": cat, "x_vehiculo_id": v["id"]}))
+    p = norm(v["license_plate"]); ex = [e for e in equipos if p and p in norm(e["name"])]
+    if len(ex) == 1:  # unifica: reusa el equipo existente (nombre viejo queda en el backup y en BACKUP_NOMBRES)
+        e = ex[0]; vinculados += 1; RENOMBRES.append({"equipo_id": e["id"], "nombre_anterior": e["name"], "categoria_anterior": e["category_id"]})
+        hacer(f"vincula equipo existente id {e['id']} → fleet.vehicle {v['id']} y lo renombra «patente · modelo» (nombre anterior al backup)",
+              lambda e=e, v=v: c("maintenance.equipment", "write", [e["id"]], {"name": nombre(v), "x_vehiculo_id": v["id"], "category_id": cat}))
+    else:
+        nuevos += 1
+        hacer(f"equipo nuevo «patente · modelo» (fleet.vehicle {v['id']}) en {CATEG}", lambda v=v: c("maintenance.equipment", "create", {"name": nombre(v), "category_id": cat, "x_vehiculo_id": v["id"]}))
+print(f"vehículos en Flota: {len(vehs)} · ya con equipo: {len(ya_mapeados)} · nuevos: {nuevos} · vinculados/renombrados: {vinculados}")
+if APPLY and RENOMBRES: json.dump(RENOMBRES, open(ruta.replace(".json", "-equipos.json"), "w"), ensure_ascii=False, indent=1, default=str)
 # E. etapa
 if not c("maintenance.stage", "search", [["name", "=", ETAPA]]):
     hacer(f"etapa de Mantenimiento «{ETAPA}» sequence 0 (antes de «A iniciar» id 1)", lambda: c("maintenance.stage", "create", {"name": ETAPA, "sequence": 0, "done": False, "fold": False}))
+# botones (acciones de servidor, solo grupo Logística)
+grupos = {g["name"]: g["id"] for g in c("res.groups", "search_read", [["name", "in", [G_API, G_RESP, G_LOG]]], fields=["name"])}
+bids = {}
+for nb, k, code in BOTONES:
+    ex = c("ir.actions.server", "search", [["name", "=", nb]])
+    bids[k] = ex[0] if ex else hacer(f"acción de servidor «{nb}» (maintenance.request, solo grupo «{G_LOG}» id {grupos.get(G_LOG)})",
+        lambda nb=nb, code=code: c("ir.actions.server", "create", {"name": nb, "model_id": mid("maintenance.request"), "state": "code", "code": code, "group_ids": [(6, 0, [grupos[G_LOG]])]}))
+btn = "".join(f'<button name="{bids.get(k) or "<id>"}" type="action" string="{t}" class="{cl}" groups="__export__.seg360_autoriza_salida" invisible="x_validacion != \'pendiente\'"/>'
+              for k, t, cl in [("valida", "Valida: ingresa", "btn-primary"), ("rechaza", "No valida: vuelve a Playa", "btn-secondary")])
+VISTAS["maintenance.request"] = (VISTAS["maintenance.request"][0], VISTAS["maintenance.request"][1].replace("__BOTONES__", btn))
 # vistas
 base = {"x_seg360_chequeo": c("ir.ui.view", "search", [["name", "=", "x_seg360_chequeo.form.seg360"], ["inherit_id", "=", False]]),
         "maintenance.request": c("ir.ui.view", "search", [["model", "=", "maintenance.request"], ["type", "=", "form"], ["inherit_id", "=", False]], order="priority, id")}
@@ -179,7 +224,6 @@ for nombre, mo, trig, dom, code in AUTOS:
         return c("base.automation", "create", {"name": nombre, "model_id": model_id, "trigger": trig, "filter_domain": repr(dom) if dom else False, "action_server_ids": [(6, 0, [act])], **extra})
     hacer(f"automatización «{nombre}» ({mo}, {trig}{', ' + repr(dom) if dom else ''})", crear)
 # G. accesos
-grupos = {g["name"]: g["id"] for g in c("res.groups", "search_read", [["name", "in", [G_API, G_RESP]]], fields=["name"])}
 for mo, g, (r_, w, cr, u) in ACCESOS:
     gid = grupos.get(g)
     if mid(mo) and gid and c("ir.model.access", "search", [["model_id.model", "=", mo], ["group_id", "=", gid]]): print("ya existe acceso", mo, g); continue

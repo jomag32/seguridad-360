@@ -115,6 +115,7 @@ export function ingresoPrevisto(gravedad, tipo, hoy = new Date(), plazos = PLAZO
 export const CAUSAS = ["Falla en uso", "No apto en portón", "Ingreso previsto vencido", "Daño o accidente", "Service por km u horas", "Vencimiento documental"];
 export const SISTEMAS = ["Frenos", "Luces / eléctrico", "Motor", "Caja / transmisión", "Dirección / suspensión", "Neumáticos", "Refrigeración", "Hidráulico", "Carrocería", "Climatización", "Kit obligatorio", "Documentación", "Service preventivo", "Otro"];
 export const LLEGADAS = ["Por sus medios", "Remolcada", "En grúa o carretón", "Quedó en la calle: la trae Logística"];
+export const UBICACIONES = ["Taller propio", "Playa en espera", "En proveedor", "Varada en obra o ruta"]; // «En proveedor»: lógica en etapa 2
 export const PRIORIDADES = [["Crítica (no sale)", "3"], ["Alta", "2"], ["Media", "1"], ["Baja", "0"]]; // estrellas de maintenance.request
 export const FOTOS = [["tablero", "Tablero: km y testigos encendidos"], ["zona", "Zona de la falla"], ["frente", "Lado frente"], ["atras", "Lado atrás"], ["izq", "Lado izquierdo"], ["der", "Lado derecho"]];
 export const fotosExigidas = (causa) => ["tablero", "zona", ...(causa === "Daño o accidente" ? ["frente", "atras", "izq", "der"] : [])];
@@ -136,10 +137,19 @@ export function validarIngreso(i, ultimo = null) {
   if (!i?.legajo?.trim() || !i?.dni?.trim()) e.push("Firma: cargá legajo y DNI del guardia");
   return e;
 }
+/** Fotos que completa el guardia después (pedidos creados por NO APTO en portón). */
+export function validarFotos(f, causa) {
+  const e = [], faltan = fotosExigidas(causa).filter((k) => !/^data:image\//.test((f?.fotos || {})[k] || ""));
+  if (faltan.length) e.push("Faltan fotos: " + faltan.map((k) => FOTOS.find(([x]) => x === k)[1]).join(", "));
+  if (!f?.guardiaId) e.push("Elegí el guardia");
+  if (!f?.legajo?.trim() || !f?.dni?.trim()) e.push("Firma: cargá legajo y DNI del guardia");
+  return e;
+}
 export function validarValidacion(v) {
   const e = [];
   if (typeof v?.valida !== "boolean") e.push("Elegí: valida la causa o no valida");
   if (!v?.por?.trim()) e.push("Falta quién de Logística valida");
   if (v?.valida === false && !v?.motivo?.trim()) e.push("No valida: escribí el motivo");
+  if (v?.valida === true && !UBICACIONES.includes(v?.ubicacion)) e.push("Valida: elegí la ubicación");
   return e;
 }
