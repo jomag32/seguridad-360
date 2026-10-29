@@ -88,11 +88,11 @@ export function crearDatos(ejecutar) {
       }
       return this.chequeo(nuevo);
     },
-    /** Plazos editables (modelo x_seg360_plazo en Odoo); si no hay, valores iniciales del documento. */
+    /** Plazos editables: parámetros del sistema seg360.plazo.<gravedad>.<tipo> (horas); si no se pueden leer, valores iniciales del documento. */
     async plazos() {
       const p = JSON.parse(JSON.stringify(PLAZOS_H));
-      const r = await sr("x_seg360_plazo", [["x_active", "=", true]], ["x_gravedad", "x_tipo", "x_horas"]).catch(() => []);
-      for (const x of r) { const gr = GRAV_INV[x.x_gravedad], t = TIPO_INV[x.x_tipo]; if (gr && t) { p[gr] = p[gr] || {}; p[gr][t] = x.x_horas || null; } }
+      const r = await sr("ir.config_parameter", [["key", "=like", "seg360.plazo.%"]], ["key", "value"]).catch(() => []);
+      for (const x of r) { const [, , g, ti] = x.key.split("."), gr = GRAV_INV[g], t = TIPO_INV[ti], h = parseInt(x.value, 10); if (gr && t && h > 0) { p[gr] = p[gr] || {}; p[gr][t] = h; } }
       return p;
     },
     async ultimaMedida(vehiculoId, unidad) {

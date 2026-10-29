@@ -113,3 +113,7 @@ test("NO APTO auto → fotos pendientes; el guardia las completa; valida exige u
   const csv = await (await fetch(base + "/api/export/ingresos.csv", { headers: h })).text(); assert.match(csv, /ubicacion/); assert.match(csv, /Varada/);
   const c2 = await (await fetch(base + "/api/export/chequeos.csv", { headers: h })).text(); assert.match(c2, /ingreso_previsto/);
 });
+test("plazos: lee ir.config_parameter seg360.plazo.* y si falla usa los valores del documento", async () => {
+  const p = await crearDatos(o.ejecutar).plazos(); assert.equal(p.Media.Liviano, 60); assert.equal(p.Alta.Pesado, 24);
+  const q = await crearDatos(async () => { throw new Error("sin permiso"); }).plazos(); assert.equal(q.Media.Liviano, 72);
+});

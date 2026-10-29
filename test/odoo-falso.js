@@ -5,7 +5,7 @@ export function odooFalso() {
       { id: 2, x_name: "Guardia Dos", x_legajo: "L-11", x_dni: "30111222", x_empresa: "Empresa Prueba", x_active: true },
       { id: 3, x_name: "Guardia Tres", x_legajo: "L-12", x_dni: "40111222", x_empresa: "Empresa Prueba", x_active: true }],
     x_seg360_porton: [{ id: 2, x_codigo: "A02", x_name: "A02 · Portón Playa 1", x_tipo: "vehiculos", x_active: true }, { id: 1, x_codigo: "A01", x_name: "A01 · Puerta peatonal", x_tipo: "peatonal", x_active: true }],
-    "fleet.vehicle": [{ id: 5, license_plate: "AA000AA", display_name: "Unidad de prueba" }], x_seg360_semana: [], x_seg360_turno: [], x_seg360_chequeo: [], x_seg360_llave: [], x_seg360_plazo: [],
+    "fleet.vehicle": [{ id: 5, license_plate: "AA000AA", display_name: "Unidad de prueba" }], x_seg360_semana: [], x_seg360_turno: [], x_seg360_chequeo: [], x_seg360_llave: [], "ir.config_parameter": [{ id: 1, key: "seg360.plazo.media.liviano", value: "60" }],
     "maintenance.equipment": [{ id: 40, name: "Unidad de prueba (equipo)", x_vehiculo_id: 5 }],
     "maintenance.stage": [{ id: 9, name: "Ingreso a validar (Logística)" }, { id: 1, name: "A iniciar" }, { id: 2, name: "En progreso" }],
     "maintenance.request": [], "ir.attachment": [] };

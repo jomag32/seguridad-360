@@ -5,13 +5,13 @@ Entorno: ODOO_URL, ODOO_DB, ODOO_UID (2), ODOO_API_KEY, BACKUP_JSON (opcional).
 Crea (si no existe):
  A. x_seg360_chequeo: valor «apto_obs» en x_dictamen; campos x_gravedad, x_obs_falla, x_ingreso_previsto, x_obs_logistica, x_ingreso_id; vista heredada.
     R-S360-1 no cambia: todo lo que no sea no_apto queda «habilitada» (la unidad sale con observación).
- B. x_seg360_plazo (parámetros editables gravedad × tipo → horas) con los valores iniciales del documento «Control Flota 360°».
+ B. ir.config_parameter seg360.plazo.<gravedad>.<tipo> = horas (editables en Ajustes) con los valores iniciales del documento «Control Flota 360°».
  C. maintenance.equipment.x_vehiculo_id (→ fleet.vehicle), categoría «UNIDADES DE FLOTA» y un equipo por cada vehículo de Flota que no tenga.
  D. maintenance.request: causa, sistema, cómo llega, OK del guardia, km/horas de llegada, validación de Logística, reloj (x_ingreso_fecha); vista heredada.
  E. etapa «Ingreso a validar (Logística)» (antes de «A iniciar»).
  F. Automatizaciones: R-S360-4 km de llegada no menor al último registro · R-S360-5 «No valida» archiva el pedido (vuelve a Playa) y deja nota
     con quién declaró · R-S360-6 ingreso previsto vencido → pedido de ingreso con causa «Ingreso previsto vencido».
- G. Accesos del grupo «Seguridad 360 / Servicio API» a pedidos/equipos/etapas/plazos."""
+ G. Accesos del grupo «Seguridad 360 / Servicio API» a pedidos/equipos/etapas."""
 import os, sys, json, datetime, re, unicodedata, xmlrpc.client
 APPLY, ROLLBACK = "--apply" in sys.argv, "--rollback" in sys.argv
 U, D, UID, K = os.environ["ODOO_URL"], os.environ["ODOO_DB"], int(os.environ.get("ODOO_UID", "2")), os.environ["ODOO_API_KEY"]
@@ -49,8 +49,7 @@ CAMPOS = {
    "x_chequeo_id": F("Chequeo de portón (NO APTO)", "many2one", "x_seg360_chequeo", on_delete="set null"),
    "x_ubicacion": S("Ubicación", UBICACIONES), "x_fotos_pendientes": F("Fotos pendientes (las completa el guardia)", "boolean")},
 }
-PLAZO_MODELO = "x_seg360_plazo"
-PLAZO_CAMPOS = {"x_gravedad": S("Gravedad", GRAV, required=True), "x_tipo": S("Tipo de unidad", TIPOS, required=True), "x_horas": F("Plazo (horas)", "integer"), "x_active": F("Activo", "boolean")}
+PARAM_PREFIJO = "seg360.plazo."
 ETAPA = "Ingreso a validar (Logística)"; CATEG = "UNIDADES DE FLOTA"
 VISTAS = {
  "x_seg360_chequeo": ("x_seg360_chequeo.form.seg360.etapa1", '<data><xpath expr="//field[@name=\'x_dictamen\']" position="after">'
@@ -98,8 +97,7 @@ BOTONES = [
   "    r.write({'x_validacion': 'rechazada', 'x_valido_por': env.user.name, 'x_validacion_fecha': datetime.datetime.now()})\n"),
 ]
 G_API = "Seguridad 360 / Servicio API"; G_RESP = "Seguridad 360 / Responsable"
-ACCESOS = [("maintenance.request", G_API, (1, 1, 1, 0)), ("maintenance.equipment", G_API, (1, 0, 0, 0)), ("maintenance.stage", G_API, (1, 0, 0, 0)),
-           (PLAZO_MODELO, G_API, (1, 0, 0, 0)), (PLAZO_MODELO, G_RESP, (1, 1, 1, 1))]
+ACCESOS = [("maintenance.request", G_API, (1, 1, 1, 0)), ("maintenance.equipment", G_API, (1, 0, 0, 0)), ("maintenance.stage", G_API, (1, 0, 0, 0))]
 
 def mid(model): r = c("ir.model", "search", [["model", "=", model]]); return r[0] if r else None
 def campos(model): return {f["name"]: f["id"] for f in c("ir.model.fields", "search_read", [["model", "=", model], ["name", "=like", "x_%"]], fields=["name"])}
@@ -135,14 +133,16 @@ if ROLLBACK:
     for mo, fs in CAMPOS.items():
         ex = campos(mo); ids = [ex[f] for f in fs if f in ex]
         if ids: print("borra campos", mo, [f for f in fs if f in ex]); c("ir.model.fields", "unlink", ids)
-    pm = mid(PLAZO_MODELO); pm and (print("borra modelo", PLAZO_MODELO), c("ir.model", "unlink", [pm]))
+    pp = c("ir.config_parameter", "search", [["key", "=like", PARAM_PREFIJO + "%"]])
+    pp and (print("borra parámetros", PARAM_PREFIJO + "*", len(pp)), c("ir.config_parameter", "unlink", pp))
+    pm = mid("x_seg360_plazo"); pm and (print("borra modelo viejo x_seg360_plazo"), c("ir.model", "unlink", [pm]))
     sv = c("ir.model.fields.selection", "search", [["field_id.model", "=", "x_seg360_chequeo"], ["field_id.name", "=", "x_dictamen"], ["value", "=", "apto_obs"]])
     sv and (print("borra valor apto_obs"), c("ir.model.fields.selection", "unlink", sv))
     print("rollback listo"); sys.exit(0)
 
 if APPLY:
     ruta = os.environ.get("BACKUP_JSON") or f"backup-etapa1-{datetime.datetime.now():%Y%m%d-%H%M%S}.json"
-    json.dump({"campos": {mo: c("ir.model.fields", "search_read", [["model", "=", mo]], fields=["name", "ttype", "field_description", "required"]) for mo in CAMPOS},
+    json.dump({"parametros": c("ir.config_parameter", "search_read", [["key", "=like", PARAM_PREFIJO + "%"]], fields=["key", "value"]), "campos": {mo: c("ir.model.fields", "search_read", [["model", "=", mo]], fields=["name", "ttype", "field_description", "required"]) for mo in CAMPOS},
                "etapas": c("maintenance.stage", "search_read", [], fields=["name", "sequence", "done", "fold"]),
                "categorias": c("maintenance.equipment.category", "search_read", [], fields=["name"]),
                "equipos": c("maintenance.equipment", "search_read", [], fields=["name", "category_id"]),
@@ -157,21 +157,12 @@ fd = c("ir.model.fields", "search_read", [["model", "=", "x_seg360_chequeo"], ["
 if not c("ir.model.fields.selection", "search", [["field_id", "=", fd], ["value", "=", "apto_obs"]]):
     hacer(f"valor de selección apto_obs «APTO con observación» en x_seg360_chequeo.x_dictamen (campo id {fd})",
           lambda: c("ir.model.fields.selection", "create", {"field_id": fd, "value": "apto_obs", "name": "APTO con observación", "sequence": 1}))
-# B. modelo de plazos
-pm = mid(PLAZO_MODELO)
-if not pm:
-    pm = hacer(f"modelo {PLAZO_MODELO} «Seguridad 360 · Plazo de ingreso previsto» con {list(PLAZO_CAMPOS)}", lambda: c("ir.model", "create", {"model": PLAZO_MODELO, "name": "Seguridad 360 · Plazo de ingreso previsto", "state": "manual",
-        "field_id": [(0, 0, {"name": "x_name", "field_description": "Nombre", "ttype": "char", "state": "manual"})] + [(0, 0, {"name": k, "state": "manual", **v}) for k, v in PLAZO_CAMPOS.items()]}))
-# fix: un modelo manual nace sin ACL; sin esto ni el admin puede crear los parámetros. Accesos antes de cargar registros.
-G_SYS = c("ir.model.data", "search_read", [["module", "=", "base"], ["name", "=", "group_system"]], fields=["res_id"])[0]["res_id"]
-if APPLY and pm and not c("ir.model.access", "search", [["model_id", "=", pm], ["group_id", "=", G_SYS]]):
-    hacer(f"acceso {PLAZO_MODELO} · Administración/Ajustes (id {G_SYS}) r1 w1 c1 u1", lambda: c("ir.model.access", "create", {"name": f"seg360 etapa1 {PLAZO_MODELO} sistema", "model_id": pm, "group_id": G_SYS,
-        "perm_read": 1, "perm_write": 1, "perm_create": 1, "perm_unlink": 1}))
-elif not APPLY: hacer(f"acceso {PLAZO_MODELO} · Administración/Ajustes (id {G_SYS}) r1 w1 c1 u1", lambda: None)
+# B. plazos como parámetros del sistema (Ajustes → Técnico → Parámetros del sistema): seg360.plazo.<gravedad>.<tipo> = horas
 for g, porTipo in PLAZOS.items():
     for t, h in porTipo.items():
-        if pm and APPLY and c(PLAZO_MODELO, "search", [["x_gravedad", "=", g], ["x_tipo", "=", t]]): continue
-        hacer(f"parámetro {PLAZO_MODELO}: {g} · {t} = {h} h", lambda g=g, t=t, h=h: c(PLAZO_MODELO, "create", {"x_name": f"{g} · {t}", "x_gravedad": g, "x_tipo": t, "x_horas": h, "x_active": True}))
+        k = f"{PARAM_PREFIJO}{g}.{t}"
+        if c("ir.config_parameter", "search", [["key", "=", k]]): print("ya existe", k); continue
+        hacer(f"parámetro del sistema {k} = {h}", lambda k=k, h=h: c("ir.config_parameter", "create", {"key": k, "value": str(h)}))
 # A/C/D. campos
 for mo, fs in CAMPOS.items():
     ex = campos(mo); model_id = mid(mo)
