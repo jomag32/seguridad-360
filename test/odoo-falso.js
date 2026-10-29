@@ -20,6 +20,7 @@ export function odooFalso() {
     if (me === "search_read") { let r = filtrar(mo, args[0]); if (/desc/.test(kw.order || "")) r = [...r].reverse(); if (kw.limit) r = r.slice(0, kw.limit); return r.map((x) => ver(mo, x)); }
     if (me === "read") return args[0].map((i) => db[mo].find((x) => x.id === i)).filter(Boolean).map((x) => ver(mo, x));
     if (me === "search") return filtrar(mo, args[0]).map((x) => x.id);
+    if (me === "write" && mo === "x_seg360_chequeo") throw new Error("AccessError: Servicio API sin escritura en x_seg360_chequeo (como en Odoo)");
     if (me === "write") { db[mo].filter((x) => args[0].includes(x.id)).forEach((x) => Object.assign(x, args[1])); return true; }
     if (me === "unlink") { db[mo] = db[mo].filter((x) => !args[0].includes(x.id)); return true; }
     if (me === "create") {
