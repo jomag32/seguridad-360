@@ -162,6 +162,12 @@ pm = mid(PLAZO_MODELO)
 if not pm:
     pm = hacer(f"modelo {PLAZO_MODELO} «Seguridad 360 · Plazo de ingreso previsto» con {list(PLAZO_CAMPOS)}", lambda: c("ir.model", "create", {"model": PLAZO_MODELO, "name": "Seguridad 360 · Plazo de ingreso previsto", "state": "manual",
         "field_id": [(0, 0, {"name": "x_name", "field_description": "Nombre", "ttype": "char", "state": "manual"})] + [(0, 0, {"name": k, "state": "manual", **v}) for k, v in PLAZO_CAMPOS.items()]}))
+# fix: un modelo manual nace sin ACL; sin esto ni el admin puede crear los parámetros. Accesos antes de cargar registros.
+G_SYS = c("ir.model.data", "search_read", [["module", "=", "base"], ["name", "=", "group_system"]], fields=["res_id"])[0]["res_id"]
+if APPLY and pm and not c("ir.model.access", "search", [["model_id", "=", pm], ["group_id", "=", G_SYS]]):
+    hacer(f"acceso {PLAZO_MODELO} · Administración/Ajustes (id {G_SYS}) r1 w1 c1 u1", lambda: c("ir.model.access", "create", {"name": f"seg360 etapa1 {PLAZO_MODELO} sistema", "model_id": pm, "group_id": G_SYS,
+        "perm_read": 1, "perm_write": 1, "perm_create": 1, "perm_unlink": 1}))
+elif not APPLY: hacer(f"acceso {PLAZO_MODELO} · Administración/Ajustes (id {G_SYS}) r1 w1 c1 u1", lambda: None)
 for g, porTipo in PLAZOS.items():
     for t, h in porTipo.items():
         if pm and APPLY and c(PLAZO_MODELO, "search", [["x_gravedad", "=", g], ["x_tipo", "=", t]]): continue
