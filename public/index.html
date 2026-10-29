@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="estilo.css"></head><body>
 <header><b>Seguridad 360</b><span>Garita S06 · Tecnología ARME</span></header>
-<nav><a href="#semana">Guardias</a><a href="#chequeo">Chequeo</a><a href="#llave">Llave</a><a href="#registros">Registros</a></nav>
+<nav><a href="#semana">Guardias</a><a href="#chequeo">Chequeo</a><a href="#taller">Ingreso</a><a href="#logistica">Logística</a><a href="#llave">Llave</a><a href="#registros">Regs.</a></nav>
 <main>
 <section id="v-ingreso" hidden><h1>Seguridad 360 · Ingreso</h1><p class="ayuda">Pedí la clave de acceso a Logística. Se pide una sola vez en este teléfono.</p>
  <form id="i-f"><label>Clave de acceso<input id="i-clave" autocomplete="off" autocapitalize="characters" required></label><div id="i-err" class="err"></div><button class="prim">Entrar</button></form></section>
@@ -33,11 +33,43 @@
  <fieldset class="seg"><legend>Documentación (cédula, seguro, VTV)</legend><label><input type="radio" name="documentacion" value="Sí">Completa</label><label class="no"><input type="radio" name="documentacion" value="No">Falta</label></fieldset>
  <fieldset id="c-fluidos"><legend>Nivel de fluidos (salida)</legend></fieldset>
  <fieldset id="c-kit"><legend>Kit</legend></fieldset>
+ <fieldset id="c-obs"><legend>Estado que fijó Logística (salida)</legend>
+  <div class="seg"><label><input type="radio" name="estadoLogistica" value="Apto" checked>Apto</label><label class="obs"><input type="radio" name="estadoLogistica" value="Apto con observación">Apto con observación</label></div>
+  <div id="c-obsdet" hidden>
+   <fieldset class="seg"><legend>Gravedad de la falla</legend><label><input type="radio" name="gravedad" value="Alta">Alta</label><label><input type="radio" name="gravedad" value="Media">Media</label><label><input type="radio" name="gravedad" value="Baja">Baja</label></fieldset>
+   <label>Observación<textarea name="observacionFalla" rows="2" placeholder="Ej.: ruido en caja, no forzar la 2da"></textarea></label>
+   <label>Ingreso previsto (fecha límite)<input type="date" name="ingresoPrevisto"></label><p class="ayuda" id="c-plazo"></p>
+   <label>Quién de Logística lo fijó<input name="logistica" autocomplete="off"></label>
+  </div></fieldset>
  <div id="c-aut" hidden class="aviso"><b>Falta kit: NO APTO, la unidad no sale.</b> Solo puede salir si el Jefe de Logística autoriza la salida en Odoo. Frenos, luces, VTV/RTO, documentación o fluido bajo el mínimo: nunca se autoriza.</div>
  <label>Observaciones<textarea name="observaciones" rows="2"></textarea></label>
  <fieldset class="firma"><legend>Firma del guardia</legend><div class="fila2"><label>Legajo<input name="legajo" autocomplete="off" autocapitalize="characters"></label><label>DNI<input name="dni" inputmode="numeric" autocomplete="off"></label></div></fieldset>
  <div id="c-dict" class="dict"></div><div id="c-err" class="err"></div>
  <button class="prim" id="c-enviar">Registrar chequeo</button></form></section>
+<section id="v-taller" hidden><h1>Ingreso a mantenimiento</h1>
+ <p class="ayuda">Sin causa declarada no hay ingreso. El guardia da el OK de llegada siempre, aunque venga remolcada o haya quedado en la calle. Queda como pedido en Odoo › Mantenimiento, a validar por Logística.</p>
+ <div id="t-pend"></div>
+ <form id="t-f" novalidate>
+ <div id="t-modo" class="aviso" hidden></div>
+ <div id="t-datos">
+ <label>Unidad<select name="vehiculo" id="t-vehiculo"></select></label>
+ <label id="t-otra" hidden>Unidad (si no está en la lista)<input name="unidad" autocomplete="off" placeholder="Ej: AB123CD o INT-07"></label>
+ <label>Causa declarada<select name="causa" id="t-causa"></select></label>
+ <label>Sistema afectado<select name="sistema" id="t-sistema"></select></label>
+ <label>Relato del chofer u operador<textarea name="relato" rows="2" placeholder="Texto corto"></textarea></label>
+ <label>Quién declaró (chofer u operador)<input name="declaro" autocomplete="off"></label>
+ <fieldset class="seg col" id="t-llegada"><legend>Cómo llega</legend></fieldset>
+ <label><span>Km u horas de llegada</span><input name="medida" type="number" inputmode="numeric" min="0"></label><p class="ayuda" id="t-ultimo"></p>
+ <fieldset class="estrellas" id="t-prio"><legend>Gravedad (prioridad en Mantenimiento)</legend></fieldset>
+ </div>
+ <fieldset id="t-fotos"><legend>Fotos obligatorias</legend></fieldset>
+ <fieldset class="firma"><legend>OK de llegada del guardia</legend><label>Guardia<select name="guardia" id="t-guardia"></select></label><div class="fila2"><label>Legajo<input name="legajo" autocomplete="off" autocapitalize="characters"></label><label>DNI<input name="dni" inputmode="numeric" autocomplete="off"></label></div><p class="ayuda">Fecha y hora del OK: las registra el sistema al enviar.</p></fieldset>
+ <div id="t-res" class="dict"></div><div id="t-err" class="err"></div>
+ <button class="prim">Dar OK de llegada y declarar ingreso</button></form></section>
+<section id="v-logistica" hidden><h1>Validación de Logística</h1>
+ <p class="ayuda">Valida la causa → la unidad ingresa a taller y empieza a correr el plazo. No valida → vuelve a Playa disponible y queda registrado quién declaró.</p>
+ <label>Quién valida (Logística)<input id="v-por" autocomplete="off"></label>
+ <div id="v-lista"></div><div id="v-err" class="err"></div></section>
 <section id="v-llave" hidden><h1>Devolución de llave</h1>
  <p class="ayuda">Cierre del ciclo. Llavero ROJO: la unidad queda bloqueada para salir hasta una devolución VERDE o AMARILLO. Sin chequeo visual: solo se registra la entrega de la llave con el color que eligió Logística.</p>
  <form id="l-f" novalidate>
@@ -56,7 +88,7 @@
  <div id="l-res" class="dict"></div><div id="l-err" class="err"></div>
  <button class="prim">Registrar devolución</button></form></section>
 <section id="v-registros" hidden><h1>Registros</h1>
- <p><a class="btn" id="x-cheq" href="#">CSV chequeos</a> <a class="btn" id="x-guard" href="#">CSV guardias</a> <a class="btn" id="x-llave" href="#">CSV llaves</a></p>
+ <p><a class="btn" id="x-cheq" href="#">CSV chequeos</a> <a class="btn" id="x-guard" href="#">CSV guardias</a> <a class="btn" id="x-llave" href="#">CSV llaves</a> <a class="btn" id="x-ing" href="#">CSV ingresos</a></p>
  <p class="ayuda">Los registros quedan en Odoo (Seguridad 360).</p><h2>Últimos chequeos</h2><div id="r-cheq"></div><h2>Últimas devoluciones de llave</h2><div id="r-llave"></div><h2>Guardias de la semana</h2><div id="r-guard"></div></section>
 </main><script type="module" src="app.js"></script>
 <script>if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));</script></body></html>
