@@ -7,13 +7,13 @@ export function odooFalso() {
     x_seg360_porton: [{ id: 2, x_codigo: "A02", x_name: "A02 · Portón Playa 1", x_tipo: "vehiculos", x_active: true }, { id: 1, x_codigo: "A01", x_name: "A01 · Puerta peatonal", x_tipo: "peatonal", x_active: true }],
     "fleet.vehicle": [{ id: 5, license_plate: "AA000AA", display_name: "Unidad de prueba" }], x_seg360_semana: [], x_seg360_turno: [], x_seg360_chequeo: [], x_seg360_llave: [], "ir.config_parameter": [{ id: 1, key: "seg360.plazo.media.liviano", value: "60" }],
     "maintenance.equipment": [{ id: 40, name: "Unidad de prueba (equipo)", x_vehiculo_id: 5 }],
-    "maintenance.stage": [{ id: 9, name: "Ingreso a validar (Logística)" }, { id: 1, name: "A iniciar" }, { id: 2, name: "En progreso" }],
+    "maintenance.stage": [{ id: 9, name: "Ingreso a validar (Logística)" }, { id: 1, name: "A iniciar" }, { id: 2, name: "En progreso" }, { id: 3, name: "Reparado", done: true }],
     "maintenance.request": [], "ir.attachment": [] };
   let sec = 100;
   const m2o = { x_guardia_id: "x_seg360_guardia", x_porton_id: "x_seg360_porton", x_vehiculo_id: "fleet.vehicle", x_semana_id: "x_seg360_semana", x_aut_salida_por_id: "res.users", equipment_id: "maintenance.equipment", stage_id: "maintenance.stage", x_chequeo_id: "x_seg360_chequeo", x_ingreso_id: "maintenance.request" };
   const ver = (mo, r) => { const o = { ...r }; for (const [f, rel] of Object.entries(m2o)) if (f in o) { const t = (db[rel] || [{ id: o[f], x_name: "Autorizante" }]).find((x) => x.id === o[f]);
     o[f] = o[f] && t ? [t.id, t.x_name || t.display_name || t.name] : false; } return o; };
-  const ok = (r, [f, op, v]) => op === "=" ? (r[f] ?? false) === v : op === "=ilike" ? String(r[f] || "").toLowerCase() === String(v).toLowerCase() : op === "in" ? v.includes(r[f]) : op === "!=" ? (r[f] ?? false) !== v : true;
+  const ok = (r, [f, op, v]) => op === "=" ? (r[f] ?? false) === v : op === "=ilike" ? String(r[f] || "").toLowerCase() === String(v).toLowerCase() : op === "in" ? v.includes(r[f]) : op === "not in" ? !v.includes(r[f]) : op === "!=" ? (r[f] ?? false) !== v : true;
   const filtrar = (mo, dom) => db[mo].filter((r) => dom.every((d) => ok(r, d)));
   const err = (msg) => new ErrorOdoo("Odoo: odoo.exceptions.UserError", { tipo: "odoo.exceptions.UserError", detalle: msg });
   async function ejecutar(mo, me, args = [], kw = {}) {

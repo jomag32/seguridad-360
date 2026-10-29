@@ -1,5 +1,5 @@
 import test from "node:test"; import assert from "node:assert/strict"; import http from "node:http";
-import { crearApp } from "../server.js"; import { crearDatos } from "../datos-odoo.js"; import { odooFalso } from "./odoo-falso.js";
+import { crearApp } from "../server.js"; import { crearDatos, textoPlano } from "../datos-odoo.js"; import { odooFalso } from "./odoo-falso.js";
 process.env.ACCESS_KEY = "PRUEBA7";
 const o = odooFalso(); const srv = http.createServer(crearApp(crearDatos(o.ejecutar))).listen(0); const base = `http://localhost:${srv.address().port}`;
 test.after(() => { srv.closeAllConnections(); srv.close(); });
@@ -91,14 +91,16 @@ test("NO APTO en portón crea pedido de mantenimiento a validar, ligado al equip
   const [, r] = await post("/api/chequeos", { ...chq, movimiento: "Retorno de uso", vehiculoId: 5, frenos: "NO" }); assert.ok(r.ingresoId);
   const m = o.db["maintenance.request"].find((x) => x.id === r.ingresoId); assert.equal(m.x_causa, "no_apto_en_porton"); assert.equal(m.equipment_id, 40); assert.equal(m.priority, "3"); assert.equal(m.stage_id, 9);
 });
+const cerrarAbiertos = (vid) => o.db["maintenance.request"].filter((x) => x.x_vehiculo_id === vid).forEach((x) => (x.stage_id = 3)); // «Reparado» (done)
 test("ingreso declarado: km menor al último → 422; faltan fotos → 422; ok → pendiente; valida → A iniciar con reloj; rechazo → registra quién declaró", async () => {
+  cerrarAbiertos(5);
   const i = { vehiculoId: 5, causa: "Daño o accidente", sistema: "Carrocería", relato: "Golpe lateral", declaro: "Chofer A", llegada: "En grúa o carretón", guardiaId: 1, legajo: "L-10", dni: "20111222", medida: 10, prioridad: "2", fotos: { tablero: png, zona: png } };
   let [s, r] = await post("/api/ingresos", i); assert.equal(s, 422); assert.match(r.errores.join(), /menor que el último/); assert.match(r.errores.join(), /Faltan fotos/);
   [s, r] = await post("/api/ingresos", { ...i, medida: 1300, fotos: { tablero: png, zona: png, frente: png, atras: png, izq: png, der: png } }); assert.equal(s, 201);
   assert.equal(r.validacion, "pendiente"); assert.equal(o.db["ir.attachment"].filter((a) => a.res_id === r.id).length, 6);
   let [s2, v] = await post(`/api/ingresos/${r.id}/validacion`, { valida: true, por: "Logística 1", ubicacion: "Taller propio" }); assert.equal(s2, 200); assert.equal(v.etapa, "A iniciar"); assert.ok(v.ingresoFecha);
   [s2] = await post(`/api/ingresos/${r.id}/validacion`, { valida: false, por: "x", motivo: "y" }); assert.equal(s2, 409);
-  [s, r] = await post("/api/ingresos", { ...i, causa: "Falla en uso", medida: 1400 }); 
+  cerrarAbiertos(5); [s, r] = await post("/api/ingresos", { ...i, causa: "Falla en uso", medida: 1400 }); assert.equal(s, 201);
   [s2, v] = await post(`/api/ingresos/${r.id}/validacion`, { valida: false, por: "Logística 1", motivo: "No se verifica la falla" }); assert.equal(v.validacion, "rechazada"); assert.equal(v.declaro, "Chofer A");
   assert.deepEqual(validarIngreso({ ...i, causa: "" }).some((e) => /causa/.test(e)), true);
 });
@@ -133,4 +135,29 @@ test("Emite humo: obligatorio marcarlo; Sí → NO APTO bloqueante (no autorizab
   [s, r] = await post("/api/chequeos", { ...chq, vehiculoId: null, unidad: "HUM-01", humo: "Sí" }); assert.equal(s, 201);
   assert.equal(r.dictamen.resultado, "NO APTO"); assert.equal(r.dictamen.bloqueante, true); assert.match(r.dictamen.motivos.join(), /Emite humo/); assert.equal(r.humo, "Sí");
   const csv = await (await fetch(base + "/api/export/chequeos.csv", { headers: h })).text(); assert.match(csv, /emite_humo/);
+});
+
+test("sin duplicados: ingreso con otro abierto (a validar o en curso) → 409 que nombra el pedido; rechazado o reparado no bloquea; NO APTO se liga al abierto", async () => {
+  const g = { guardiaId: 1, legajo: "L-10", dni: "20111222" }, F6 = { tablero: png, zona: png, frente: png, atras: png, izq: png, der: png };
+  const i = { vehiculoId: null, unidad: "KPG-TEST", causa: "Daño o accidente", sistema: "Carrocería", relato: "se incendió la fusiblera", declaro: "Chofer", llegada: "Por sus medios", ...g, medida: 100, prioridad: "3", fotos: F6 };
+  let [s, r] = await post("/api/ingresos", i); assert.equal(s, 201); const a = r.id;
+  [s, r] = await post("/api/ingresos", { ...i, medida: 101 }); assert.equal(s, 409); assert.equal(r.existente, a); assert.match(r.errores[0], new RegExp(`ya tiene un ingreso abierto: pedido #${a}`));
+  [s, r] = await post("/api/ingresos", { ...i, unidad: "kpg-test ", medida: 101 }); assert.equal(s, 409); // mismo texto, otra mayúscula/espacio
+  await post(`/api/ingresos/${a}/validacion`, { valida: true, por: "L", ubicacion: "Taller propio" });
+  [s, r] = await post("/api/ingresos", { ...i, medida: 102 }); assert.equal(s, 409, "validado y en curso sigue abierto");
+  // NO APTO en portón con ingreso abierto: no crea otro, liga el chequeo y suma sus fotos al pedido existente
+  const antes = o.db["maintenance.request"].length;
+  [s, r] = await post("/api/chequeos", { ...chq, vehiculoId: null, unidad: "KPG-TEST", movimiento: "Retorno de uso", frenos: "NO", medida: 103, fotos: { a: png } }); assert.equal(s, 201);
+  assert.equal(r.ingresoId, a); assert.equal(o.db["maintenance.request"].length, antes);
+  assert.ok(o.db["ir.attachment"].some((x) => x.res_model === "maintenance.request" && x.res_id === a && /chequeo-1/.test(x.name)));
+  o.db["maintenance.request"].find((x) => x.id === a).stage_id = 3; // reparado
+  [s, r] = await post("/api/ingresos", { ...i, medida: 104 }); assert.equal(s, 201); const b = r.id;
+  await post(`/api/ingresos/${b}/validacion`, { valida: false, por: "L", motivo: "no corresponde" });
+  [s] = await post("/api/ingresos", { ...i, medida: 105 }); assert.equal(s, 201, "rechazado no bloquea");
+});
+test("relato HTML de Odoo se muestra como texto plano", async () => {
+  assert.equal(textoPlano("<p>se incendio la fusiblera</p>"), "se incendio la fusiblera");
+  assert.equal(textoPlano("<p>a &amp; b</p><p>c<br>d</p>"), "a & b\nc\nd"); assert.equal(textoPlano(false), "");
+  const m = o.db["maintenance.request"].at(-1); m.description = "<p>humo en <b>fusiblera</b></p>";
+  const [, l] = await get("/api/ingresos?todos=1"); assert.equal(l.find((x) => x.id === m.id).relato, "humo en fusiblera");
 });

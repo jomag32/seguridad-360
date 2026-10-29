@@ -114,7 +114,8 @@ F.onsubmit = async (e) => {
   e.preventDefault(); const c = datos(), err = [...validarChequeo(c), ...(validarChequeo(c).length ? [] : validarFotosChequeo(c, dictaminar(c)))];
   $("#c-err").textContent = err.join(" · "); if (err.length) return $("#c-err").scrollIntoView({ behavior: "smooth" });
   $("#c-enviar").disabled = true; const [s, r] = await api("/api/chequeos", c).finally(() => ($("#c-enviar").disabled = false));
-  if (s === 201) { pintar(r.dictamen, r); esperar(r); F.legajo.value = F.dni.value = ""; limpiarFotosCh(); $("#c-dict").scrollIntoView({ behavior: "smooth" }); } else $("#c-err").textContent = errores(r);
+  if (s === 201) { F.reset(); limpiarFotosCh(); $("#c-otra").hidden = true; $("#c-obsdet").hidden = true; $("#c-aut").hidden = true; $("#c-fotos").classList.remove("req");
+    pintar(r.dictamen, r); esperar(r); $("#c-dict").insertAdjacentHTML("beforeend", `<small><b>Chequeo registrado ${esc(r.numero)}.</b> El formulario quedó limpio para el próximo.</small>`); $("#c-dict").scrollIntoView({ behavior: "smooth" }); } else $("#c-err").textContent = errores(r);
 };
 // fotos del chequeo (hasta 4): se achican en el teléfono como en Ingreso
 const fotosCh = {};
@@ -144,6 +145,8 @@ T.onchange = async (e) => { $("#t-otra").hidden = T.vehiculo.value !== OTRA;
   const req = fotosExigidas(completar ? completar.causa : T.causa.value); document.querySelectorAll(".foto:not(.fch)").forEach((d) => d.classList.toggle("req", req.includes(d.dataset.k)));
   if (e?.target?.name === "vehiculo" || e?.target?.name === "unidad") { const i = leerIngreso(); const [s, r] = await api(`/api/ultima-medida?vehiculoId=${i.vehiculoId || ""}&unidad=${encodeURIComponent(i.unidad)}`);
     ultimo = s === 200 ? r.medida : null; $("#t-ultimo").textContent = ultimo != null ? `Último registro: ${ultimo}. No puede ser menor.` : ""; } };
+function limpiarIngreso() { T.reset(); for (const k in fotos) delete fotos[k]; document.querySelectorAll(".foto:not(.fch)").forEach((d) => { d.querySelector("img").hidden = true; d.querySelector("input").value = ""; d.classList.remove("req"); });
+  $("#t-otra").hidden = true; ultimo = null; $("#t-ultimo").textContent = ""; $("#t-err").textContent = ""; }
 let completar = null; // pedido creado por NO APTO en portón: el guardia completa solo las fotos
 async function pendientes() {
   const [s, l] = await api("/api/ingresos/fotos-pendientes"); if (s !== 200) return;
@@ -162,13 +165,14 @@ T.onsubmit = async (e) => {
   e.preventDefault();
   if (completar) { const f = { fotos, guardiaId: +T.guardia.value || null, legajo: T.legajo.value.trim(), dni: T.dni.value.trim() }, er = validarFotos(f, completar.causa);
     $("#t-err").textContent = er.join(" · "); if (er.length) return;
-    const [s, r] = await api(`/api/ingresos/${completar.id}/fotos`, f); if (s !== 200) return ($("#t-err").textContent = errores(r));
+    const b = T.querySelector(".prim"); b.disabled = true; const [s, r] = await api(`/api/ingresos/${completar.id}/fotos`, f).finally(() => (b.disabled = false)); if (s !== 200) return ($("#t-err").textContent = errores(r));
     const el = $("#t-res"); el.className = "dict APTO"; el.innerHTML = `<small>${esc(r.numero)}</small><big>FOTOS OK</big><b>Fotos subidas al pedido en Odoo › Mantenimiento</b>`;
-    T.legajo.value = T.dni.value = ""; modo(null); pendientes(); return; }
+    limpiarIngreso(); modo(null); pendientes(); return; }
   const i = leerIngreso(), err = validarIngreso(i, ultimo); $("#t-err").textContent = err.join(" · "); if (err.length) return;
-  const [s, r] = await api("/api/ingresos", i);
-  if (s === 201) { const el = $("#t-res"); el.className = "dict OBS"; el.innerHTML = `<small>Ingreso declarado · ${esc(r.numero)}</small><big>A VALIDAR</big><b>OK del guardia ${esc(r.guardia)} · ${fh(r.okGuardia)}</b><small>Logística tiene que validar la causa (mismo día).</small>`;
-    T.legajo.value = T.dni.value = ""; el.scrollIntoView({ behavior: "smooth" }); } else $("#t-err").textContent = errores(r);
+  const b = T.querySelector(".prim"); b.disabled = true; b.textContent = "Enviando…";
+  const [s, r] = await api("/api/ingresos", i).finally(() => { b.disabled = false; b.textContent = "Dar OK de llegada y declarar ingreso"; });
+  if (s === 201) { limpiarIngreso(); const el = $("#t-res"); el.className = "dict OBS"; el.innerHTML = `<small>Pedido #${r.id} · ${esc(r.numero)} · ${esc(r.unidad)}</small><big>INGRESO REGISTRADO</big><b>OK del guardia ${esc(r.guardia)} · ${fh(r.okGuardia)}</b><small>Queda A VALIDAR por Logística (mismo día). El formulario quedó limpio: no lo vuelvas a cargar.</small>`;
+    el.scrollIntoView({ behavior: "smooth" }); } else { $("#t-res").className = "dict"; $("#t-res").innerHTML = ""; $("#t-err").textContent = errores(r); $("#t-err").scrollIntoView({ behavior: "smooth" }); }
 };
 // ---------- Validación de Logística ----------
 async function logistica() {

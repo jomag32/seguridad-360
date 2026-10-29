@@ -39,6 +39,8 @@ export function crearApp(datos) {
         const i = await cuerpo(q, 12e6); const e = validarIngreso(i, await datos.ultimaMedida(i.vehiculoId, i.unidad)); if (e.length) return json(r, 422, { errores: e });
         const g = await datos.firmar(i.guardiaId, i.legajo, i.dni);
         if (!g) return json(r, 422, { errores: ["Firma: el legajo o el DNI no coinciden con el guardia elegido"] });
+        const ab = await datos.ingresoAbierto(i.vehiculoId, i.unidad);
+        if (ab) return json(r, 409, { errores: [`La unidad ya tiene un ingreso abierto: pedido #${ab.id} «${ab.numero}» (${ab.causa}, ${ab.etapa || "en curso"}). No se crea otro; si hace falta, que Logística lo valide o rechace.`], existente: ab.id });
         return json(r, 201, await datos.crearIngreso(i, g));
       }
       const mv = u.pathname.match(/^\/api\/ingresos\/(\d+)\/validacion$/);
